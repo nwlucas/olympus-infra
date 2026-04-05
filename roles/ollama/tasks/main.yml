@@ -1,0 +1,41 @@
+---
+- name: Install Ollama via Homebrew
+  community.general.homebrew:
+    name: ollama
+    state: present
+
+- name: Start Ollama service
+  ansible.builtin.command: /opt/homebrew/bin/brew services start ollama
+  register: ollama_start
+  changed_when: "'Successfully started' in ollama_start.stdout"
+  failed_when: false
+
+- name: Wait for Ollama to be ready
+  ansible.builtin.uri:
+    url: "http://localhost:{{ ollama_service_port }}/api/tags"
+    method: GET
+  register: ollama_ready
+  until: ollama_ready.status == 200
+  retries: 12
+  delay: 5
+
+- name: Get list of already-pulled models
+  ansible.builtin.uri:
+    url: "http://localhost:{{ ollama_service_port }}/api/tags"
+    method: GET
+    return_content: true
+  register: ollama_models_response
+
+- name: Set pulled model names
+  ansible.builtin.set_fact:
+    ollama_pulled_models: >-
+      {{ ollama_models_response.json.models | map(attribute='name') | list }}
+
+- name: Pull Ollama models
+  ansible.builtin.shell: |
+    /opt/homebrew/bin/ollama pull {{ item }} > ~/.ollama/pull-{{ item | replace(':', '-') | replace('/', '-') }}.log 2>&1
+  loop: "{{ ollama_models }}"
+  when: item not in ollama_pulled_models
+  changed_when: true
+  # Pulls can take a long time; increase timeout accordingly
+  timeout: 7200

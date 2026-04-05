@@ -1,0 +1,31 @@
+---
+# Mac Studio vars for ansible-pull (pull-mode, health checks only)
+ansible_user: ansible
+
+# Ollama
+ollama_state: present
+ollama_service_port: 11434
+ollama_models:
+  - glm4-flash
+  - llama3.3:70b
+  - nomic-embed-text
+
+# LiteLLM
+litellm_state: present
+litellm_port: 4000
+litellm_config_dest: /opt/litellm/config.yaml
+
+# Tailscale
+tailscale_state: present
+tailscale_hostname: mac-studio
+
+# Cloudflared (binary only; tunnel runs in Colima k3s)
+cloudflared_state: present
+
+# Colima k3s
+colima_state: present
+colima_profile: olympus
+colima_k3s_tls_san: ""  # Set to mac_studio_tailscale_ip after Phase 2→3 handoff
+
+# Vibe Kanban (managed by ArgoCD)
+vibe_kanban_state: present

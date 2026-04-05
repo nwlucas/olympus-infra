@@ -1,0 +1,308 @@
+---
+# Common role main tasks
+# This role contains tasks that should be executed on all servers
+
+- name: Update package cache
+  ansible.builtin.package:
+    update_cache: true
+  when: ansible_os_family in ['Debian', 'RedHat']
+  tags:
+    - packages
+    - update
+
+- name: Upgrade all packages (if enabled)
+  ansible.builtin.package:
+    name: "*"
+    state: present
+  when: common_package_upgrade | default(false)
+  tags:
+    - packages
+    - upgrade
+
+- name: Install common packages
+  ansible.builtin.package:
+    name: "{{ common_packages }}"
+    state: present
+  tags:
+    - packages
+    - common
+
+- name: Create common system directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  loop: "{{ common_dirs }}"
+  tags:
+    - directories
+    - filesystem
+
+- name: Configure timezone
+  timezone:
+    name: "{{ common_timezone }}"
+  notify: restart cron
+  tags:
+    - system
+    - common_timezone
+
+- name: Configure locale
+  locale_gen:
+    name: "{{ common_locale }}"
+    state: present
+  when: ansible_os_family == 'Debian'
+  tags:
+    - system
+    - locale
+
+- name: Set system locale
+  ansible.builtin.command: localectl set-locale LANG={{ common_locale }}
+  when: ansible_os_family == 'RedHat'
+  changed_when: false
+  tags:
+    - system
+    - locale
+
+- name: Configure keyboard layout
+  ansible.builtin.command: localectl set-keymap {{ common_keyboard_layout }}
+  when: common_keyboard_layout is defined
+  changed_when: false
+  tags:
+    - system
+    - keyboard
+
+- name: Install and configure NTP
+  ansible.builtin.package:
+    name: "{{ ntp_package_name }}"
+    state: present
+  vars:
+    ntp_package_name: "{{ 'ntp' if ansible_os_family == 'Debian' else 'chrony' }}"
+  tags:
+    - ntp
+    - time
+
+- name: Configure NTP servers
+  ansible.builtin.template:
+    src: "{{ ntp_config_template }}"
+    dest: "{{ ntp_config_path }}"
+    backup: true
+    mode: "0644"
+  vars:
+    ntp_config_template: "{{ 'ntp.conf.j2' if ansible_os_family == 'Debian' else 'chrony.conf.j2' }}"
+    ntp_config_path: "{{ '/etc/ntp.conf' if ansible_os_family == 'Debian' else '/etc/chrony.conf' }}"
+  notify: restart ntp
+  tags:
+    - ntp
+    - time
+
+- name: Start and enable NTP service
+  ansible.builtin.service:
+    name: "{{ ntp_service_name }}"
+    state: started
+    enabled: true
+  vars:
+    ntp_service_name: "{{ 'ntp' if ansible_os_family == 'Debian' else 'chronyd' }}"
+  tags:
+    - ntp
+    - time
+
+- name: Configure DNS resolvers
+  ansible.builtin.template:
+    src: resolv.conf.j2
+    dest: /etc/resolv.conf
+    backup: true
+    mode: "0644"
+  when: common_dns_servers is defined and common_dns_servers | length > 0
+  tags:
+    - dns
+    - network
+
+- name: Configure system limits
+  pam_limits:
+    domain: "*"
+    limit_type: "{{ item.type }}"
+    limit_item: "{{ item.item }}"
+    value: "{{ item.value }}"
+  loop:
+    - { type: "soft", item: "nofile", value: "{{ common_max_open_files }}" }
+    - { type: "hard", item: "nofile", value: "{{ common_max_open_files }}" }
+    - { type: "soft", item: "nproc", value: "{{ common_max_processes }}" }
+    - { type: "hard", item: "nproc", value: "{{ common_max_processes }}" }
+  tags:
+    - system
+    - limits
+    - performance
+
+- name: Configure kernel parameters
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: true
+  loop:
+    - { name: "net.core.somaxconn", value: "65535" }
+    - { name: "net.ipv4.tcp_max_syn_backlog", value: "65535" }
+    - { name: "net.ipv4.tcp_keepalive_time", value: "600" }
+    - { name: "net.ipv4.tcp_keepalive_intvl", value: "60" }
+    - { name: "net.ipv4.tcp_keepalive_probes", value: "3" }
+    - { name: "vm.swappiness", value: "10" }
+    - { name: "vm.dirty_ratio", value: "15" }
+    - { name: "vm.dirty_background_ratio", value: "5" }
+  tags:
+    - system
+    - kernel
+    - performance
+
+- name: Create admin users
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    groups: "{{ item.groups | default(omit) }}"
+    shell: "{{ item.shell | default('/bin/bash') }}"
+    create_home: "{{ item.create_home | default(true) }}"
+    state: "{{ item.state | default('present') }}"
+    password: "{{ item.password | default(omit) }}"
+  loop: "{{ common_admin_users }}"
+  when: common_admin_users is defined
+  no_log: true
+  tags:
+    - users
+    - security
+
+- name: Configure SSH authorized keys for admin users
+  authorized_key:
+    user: "{{ item.0.name }}"
+    key: "{{ item.1 }}"
+    state: present
+  loop: "{{ common_admin_users | subelements('ssh_keys', skip_missing=True) }}"
+  when: common_admin_users is defined
+  tags:
+    - users
+    - ssh
+    - security
+
+- name: Configure sudo access for admin users
+  ansible.builtin.template:
+    src: sudoers.j2
+    dest: /etc/sudoers.d/admin-users
+    mode: "0440"
+    validate: visudo -cf %s
+  when: common_admin_users is defined
+  tags:
+    - users
+    - sudo
+    - security
+
+- name: Install security updates automatically
+  ansible.builtin.package:
+    name: unattended-upgrades
+    state: present
+  when: ansible_os_family == 'Debian' and common_auto_security_updates | default(true)
+  tags:
+    - security
+    - updates
+
+- name: Configure automatic security updates
+  ansible.builtin.template:
+    src: 50unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    mode: "0644"
+  when: ansible_os_family == 'Debian' and common_auto_security_updates | default(true)
+  notify: restart unattended-upgrades
+  tags:
+    - security
+    - updates
+
+- name: Configure log rotation
+  ansible.builtin.template:
+    src: logrotate.conf.j2
+    dest: /etc/logrotate.conf
+    backup: true
+    mode: "0644"
+  when: common_log_rotation_enabled | default(true)
+  tags:
+    - logging
+    - maintenance
+
+- name: Create log rotation configurations for custom logs
+  ansible.builtin.template:
+    src: custom-logrotate.j2
+    dest: "/etc/logrotate.d/{{ item.name }}"
+    mode: "0644"
+  loop: "{{ common_custom_log_rotations | default([]) }}"
+  tags:
+    - logging
+    - maintenance
+
+- name: Configure system monitoring agent (if enabled)
+  ansible.builtin.include_tasks: monitoring.yml
+  when: common_monitoring_enabled | default(false)
+  tags:
+    - monitoring
+    - observability
+
+- name: Configure backup scripts (if enabled)
+  ansible.builtin.include_tasks: backup.yml
+  when: common_backup_enabled | default(false)
+  tags:
+    - backup
+    - maintenance
+
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname_short }}"
+  when: common_set_hostname | default(true)
+  tags:
+    - system
+    - hostname
+
+- name: Update /etc/hosts file
+  ansible.builtin.template:
+    src: hosts.j2
+    dest: /etc/hosts
+    backup: true
+    mode: "0644"
+  when: common_update_hosts_file | default(true)
+  tags:
+    - system
+    - hostname
+    - network
+
+- name: Configure rsyslog (if enabled)
+  ansible.builtin.template:
+    src: rsyslog.conf.j2
+    dest: /etc/rsyslog.conf
+    backup: true
+    mode: "0644"
+  when: common_syslog_server is defined and common_syslog_server != ""
+  notify: restart rsyslog
+  tags:
+    - logging
+    - rsyslog
+
+- name: Ensure common services are running
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop:
+    - cron
+    - rsyslog
+  register: service_status
+  failed_when:
+    - service_status.failed
+    - "'Could not find the requested service' not in service_status.msg"
+    - "'not found' not in service_status.msg"
+  tags:
+    - services
+    - system
+
+- name: Clean package cache
+  ansible.builtin.command: "{{ package_clean_command }}"
+  vars:
+    package_clean_command: "{{ 'apt-get clean' if ansible_os_family == 'Debian' else 'yum clean all' }}"
+  changed_when: false
+  when: common_clean_package_cache | default(true)
+  tags:
+    - packages
+    - cleanup

@@ -1,0 +1,63 @@
+---
+# Common role meta information
+# This file defines role metadata, dependencies, and compatibility
+
+galaxy_info:
+  author: Olympus Infrastructure Team
+  description: Common baseline configuration for all servers in the Olympus infrastructure
+  company: Olympus Organization
+
+  # License of this role
+  license: MIT
+
+  # Minimum Ansible version required
+  min_ansible_version: "2.12"
+
+  # Supported platforms
+  platforms:
+    - name: Ubuntu
+      versions:
+        - focal # 20.04 LTS
+        - jammy # 22.04 LTS
+
+    - name: Debian
+      versions:
+        - bullseye # 11
+        - bookworm # 12
+
+    - name: EL
+      versions:
+        - "8" # RHEL/CentOS 8
+        - "9" # RHEL/CentOS 9
+
+    - name: Amazon
+      versions:
+        - "all" # Amazon Linux 2
+
+    - name: SLES
+      versions:
+        - "15" # SUSE Linux Enterprise Server 15
+
+  # Galaxy tags for role discovery
+  galaxy_tags:
+    - system
+    - common
+    - baseline
+    - infrastructure
+    - security
+    - monitoring
+    - backup
+    - users
+    - ntp
+    - dns
+    - logging
+    - performance
+    - hardening
+
+# Role dependencies
+dependencies: []
+# Collections that this role depends on
+collections:
+  - ansible.posix
+  - community.general
+  - community.crypto

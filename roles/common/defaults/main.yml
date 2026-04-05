@@ -1,0 +1,262 @@
+---
+# Common role default variables
+# These variables can be overridden in group_vars, host_vars, or playbooks
+
+# Package Management
+common_package_update_cache: true
+common_package_upgrade: false
+common_clean_package_cache: true
+common_auto_security_updates: true
+
+# System Configuration
+common_timezone: UTC
+common_locale: en_US.UTF-8
+common_keyboard_layout: us
+common_set_hostname: true
+common_update_hosts_file: true
+
+# DNS Configuration
+common_dns_servers:
+  - 8.8.8.8
+  - 8.8.4.4
+  - 1.1.1.1
+  - 1.0.0.1
+
+# NTP Configuration
+common_ntp_servers:
+  - pool.ntp.org
+  - time.google.com
+  - time.cloudflare.com
+
+# Performance and System Limits
+common_max_open_files: 65536
+common_max_processes: 32768
+
+# Logging Configuration
+common_log_rotation_enabled: true
+common_log_retention_days: 30
+common_syslog_server: ""
+
+# Custom log rotation configurations
+common_custom_log_rotations:
+  - name: application
+    path: "/var/log/application/*.log"
+    frequency: daily
+    rotate: 30
+    compress: true
+    delaycompress: true
+    missingok: true
+    notifempty: true
+
+# Monitoring Configuration
+common_monitoring_enabled: false
+common_metrics_collection_enabled: false
+
+# Backup Configuration
+common_backup_enabled: false
+common_backup_retention_days: 7
+
+# Common Directories to Create
+common_dirs:
+  - /opt/scripts
+  - /opt/logs
+  - /opt/backups
+  - /opt/monitoring
+  - /opt/temp
+  - /var/log/applications
+
+# Common Packages to Install
+common_packages:
+  - curl
+  - wget
+  - vim
+  - git
+  - htop
+  - tree
+  - unzip
+  - tar
+  - rsync
+  - net-tools
+  - telnet
+  - nc
+  - tcpdump
+  - strace
+  - lsof
+  - iotop
+  - screen
+  - tmux
+  - jq
+  - bc
+  - dnsutils
+
+# User Management
+common_admin_users:
+  - name: ansible
+    groups:
+      - wheel
+      - sudo
+    shell: /bin/bash
+    create_home: true
+    state: present
+    ssh_keys: []
+
+# SSH Configuration
+common_ssh_port: 22
+common_ssh_permit_root_login: false
+common_ssh_password_authentication: false
+common_ssh_pubkey_authentication: true
+common_ssh_protocol_version: 2
+common_ssh_max_auth_tries: 3
+common_ssh_client_alive_interval: 300
+common_ssh_client_alive_count_max: 2
+
+# Security Configuration
+common_firewall_enabled: true
+common_selinux_state: enforcing
+common_fail2ban_enabled: true
+
+# Environment Detection
+common_is_development: "{{ environment == 'development' }}"
+common_is_staging: "{{ environment == 'staging' }}"
+common_is_production: "{{ environment == 'production' }}"
+
+# Development Tools (only installed in development)
+common_development_tools_enabled: "{{ common_is_development }}"
+common_development_packages:
+  - gcc
+  - make
+  - build-essential
+  - python3-dev
+  - python3-pip
+  - nodejs
+  - npm
+
+# Service Management
+common_restart_services_on_config_change: true
+common_service_timeout: 60
+
+# Kernel Parameters
+common_kernel_parameters:
+  - name: net.core.somaxconn
+    value: 65535
+  - name: net.ipv4.tcp_max_syn_backlog
+    value: 65535
+  - name: net.ipv4.tcp_keepalive_time
+    value: 600
+  - name: net.ipv4.tcp_keepalive_intvl
+    value: 60
+  - name: net.ipv4.tcp_keepalive_probes
+    value: 3
+  - name: vm.swappiness
+    value: 10
+  - name: vm.dirty_ratio
+    value: 15
+  - name: vm.dirty_background_ratio
+    value: 5
+  - name: fs.file-max
+    value: 1000000
+
+# System Limits
+common_system_limits:
+  - domain: "*"
+    type: soft
+    item: nofile
+    value: "{{ common_max_open_files }}"
+  - domain: "*"
+    type: hard
+    item: nofile
+    value: "{{ common_max_open_files }}"
+  - domain: "*"
+    type: soft
+    item: nproc
+    value: "{{ common_max_processes }}"
+  - domain: "*"
+    type: hard
+    item: nproc
+    value: "{{ common_max_processes }}"
+
+# Cron Jobs
+common_cron_jobs:
+  - name: "System cleanup"
+    minute: "0"
+    hour: "3"
+    job: "/opt/scripts/cleanup.sh"
+    user: root
+    state: present
+
+# Motd Configuration
+common_motd_enabled: true
+common_motd_template: motd.j2
+
+# System Information Display
+common_display_system_info: true
+common_system_info_items:
+  - hostname
+  - uptime
+  - load_average
+  - memory_usage
+  - disk_usage
+  - network_info
+
+# Update Configuration
+common_update_method: automatic
+common_update_schedule: "0 4 * * 0" # Weekly on Sunday at 4 AM
+common_reboot_after_updates: false
+
+# File and Directory Permissions
+common_default_file_mode: "0644"
+common_default_dir_mode: "0755"
+common_secure_file_mode: "0600"
+common_secure_dir_mode: "0700"
+
+# Temporary Files Cleanup
+common_cleanup_temp_files: true
+common_temp_dirs_to_clean:
+  - /tmp
+  - /var/tmp
+  - /opt/temp
+
+# Swap Configuration
+common_swap_enabled: true
+common_swap_size: "{{ ansible_memtotal_mb // 2 }}M"
+common_swap_swappiness: 10
+
+# Locale Settings
+common_additional_locales:
+  - en_US.UTF-8
+  - C.UTF-8
+
+# Archive and Compression
+common_default_compression: gzip
+common_compression_level: 6
+
+# Network Configuration
+common_network_manager_enabled: false
+common_static_network_config: false
+
+# SSL/TLS Configuration
+common_ssl_protocols:
+  - TLSv1.2
+  - TLSv1.3
+common_ssl_ciphers: "ECDHE+AESGCM:ECDHE+AES256:ECDHE+AES128:!aNULL:!MD5:!DSS"
+
+# Maintenance Windows
+common_maintenance_window_start: "02:00"
+common_maintenance_window_end: "04:00"
+common_maintenance_window_timezone: "{{ common_timezone }}"
+
+# Health Checks
+common_health_check_enabled: true
+common_health_check_interval: 300 # 5 minutes
+common_health_check_timeout: 30
+
+# Resource Monitoring
+common_monitor_cpu_threshold: 80
+common_monitor_memory_threshold: 85
+common_monitor_disk_threshold: 90
+common_monitor_load_threshold: 5.0
+
+# Error Handling
+common_continue_on_error: false
+common_max_retries: 3
+common_retry_delay: 5

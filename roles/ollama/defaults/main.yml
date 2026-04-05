@@ -1,0 +1,4 @@
+---
+ollama_models: []
+ollama_service_port: 11434
+ollama_keep_alive: "5m"

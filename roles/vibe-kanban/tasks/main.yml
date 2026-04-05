@@ -1,0 +1,10 @@
+---
+# vibe-kanban is deployed via Helm/ArgoCD on the Colima k3s cluster.
+# The push playbook (bootstrap-only) has no tasks here.
+# GitOps manifests live in k8s/mac-studio/argocd-apps/.
+- name: Vibe Kanban — managed by ArgoCD
+  ansible.builtin.debug:
+    msg: >
+      Vibe Kanban is deployed via Helm through ArgoCD on the Colima k3s cluster.
+      See k8s/mac-studio/argocd-apps/ for manifests.
+  when: vibe_kanban_state == "present"

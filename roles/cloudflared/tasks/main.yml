@@ -1,0 +1,13 @@
+---
+- name: Install cloudflared via Homebrew
+  community.general.homebrew:
+    name: cloudflared
+    state: "{{ 'present' if cloudflared_state == 'present' else 'absent' }}"
+
+- name: Cloudflared binary only — service runs in k3s
+  ansible.builtin.debug:
+    msg: >
+      cloudflared binary installed. The tunnel service runs as a Kubernetes Deployment
+      in the cloudflared namespace on the k3s cluster (managed by ArgoCD).
+      See k8s/mac-studio/argocd-apps/ and k8s/management/argocd-apps/.
+  when: cloudflared_state == "present"

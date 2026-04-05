@@ -1,0 +1,7 @@
+tunnel: {{ cloudflared_tunnel_id }}
+credentials-file: /Users/{{ ansible_user }}/.cloudflared/{{ cloudflared_tunnel_id }}.json
+
+ingress:
+  - hostname: {{ cloudflared_hostname }}
+    service: http://{{ cloudflared_service_host }}:{{ cloudflared_service_port }}
+  - service: http_status:404

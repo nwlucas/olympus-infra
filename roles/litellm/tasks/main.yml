@@ -1,0 +1,51 @@
+---
+- name: Install pipx via Homebrew
+  community.general.homebrew:
+    name: pipx
+    state: present
+
+- name: Ensure ~/.local/pipx directory exists with correct ownership
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ ansible_user }}"
+  loop:
+    - "/Users/{{ ansible_user }}/.local"
+    - "/Users/{{ ansible_user }}/.local/pipx"
+    - "/Users/{{ ansible_user }}/.local/bin"
+
+- name: Install LiteLLM via pipx
+  ansible.builtin.command: /opt/homebrew/bin/pipx install litellm
+  register: litellm_install
+  changed_when: "'installed package litellm' in litellm_install.stdout"
+  failed_when:
+    - litellm_install.rc != 0
+    - "'already installed' not in litellm_install.stdout"
+
+- name: Ensure LiteLLM config directory exists
+  ansible.builtin.file:
+    path: "{{ litellm_config_dest | dirname }}"
+    state: directory
+    mode: "0750"
+
+- name: Copy LiteLLM config
+  ansible.builtin.copy:
+    src: "{{ litellm_config_src }}"
+    dest: "{{ litellm_config_dest }}"
+    mode: "0640"
+  notify: Restart LiteLLM
+
+- name: Install LiteLLM launchd plist
+  ansible.builtin.template:
+    src: litellm.plist.j2
+    dest: "/Users/{{ ansible_user }}/Library/LaunchAgents/com.litellm.proxy.plist"
+    mode: "0644"
+  notify: Load LiteLLM launchd
+
+- name: Start LiteLLM via launchctl
+  ansible.builtin.command: >
+    launchctl load -w
+    /Users/{{ ansible_user }}/Library/LaunchAgents/com.litellm.proxy.plist
+  changed_when: true
+  failed_when: false

@@ -1,0 +1,28 @@
+---
+- name: Install Tailscale via Homebrew
+  community.general.homebrew:
+    name: tailscale
+    state: present
+
+- name: Check Tailscale status
+  ansible.builtin.command: /opt/homebrew/bin/tailscale status --json
+  register: tailscale_status
+  failed_when: false
+  changed_when: false
+
+- name: Start Tailscale daemon
+  ansible.builtin.command: /opt/homebrew/bin/brew services start tailscale
+  when: tailscale_status.rc != 0
+  changed_when: true
+
+- name: Join Tailscale network
+  ansible.builtin.command: >
+    /opt/homebrew/bin/tailscale up
+    --authkey={{ tailscale_auth_key }}
+    --hostname={{ tailscale_hostname }}
+    --accept-routes={{ tailscale_accept_routes | lower }}
+  when:
+    - tailscale_auth_key != ""
+    - tailscale_status.rc != 0 or (tailscale_status.stdout | from_json).BackendState != "Running"
+  no_log: true
+  changed_when: true

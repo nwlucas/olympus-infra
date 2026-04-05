@@ -1,0 +1,8 @@
+---
+all:
+  hosts:
+    management:
+      ansible_host: 127.0.0.1  # ansible-pull runs locally on the host
+      ansible_connection: local
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
