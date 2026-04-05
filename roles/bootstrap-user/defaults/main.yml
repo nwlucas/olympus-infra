@@ -11,3 +11,8 @@ bootstrap_creds_src: "~/olympus-creds"
 
 # Destination on the remote host
 bootstrap_creds_dest: /etc/olympus
+
+# Credential files to copy from bootstrap_creds_src → bootstrap_creds_dest
+bootstrap_cred_files:
+  - cloudflare-api-token        # plaintext API token, one line
+  - 1password-credentials.json  # JSON from 1Password Connect server setup

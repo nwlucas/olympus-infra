@@ -3,30 +3,46 @@
   ansible.builtin.set_fact:
     _cf_k8s_state: "{{ cloudflared_k8s_state | default('present') }}"
 
-- name: Check Cloudflare API token file
+# --- TOKEN RESOLUTION: prefer vault var, fall back to file on host ---
+- name: Use vault-provided API token
+  ansible.builtin.set_fact:
+    cf_token: "{{ cloudflared_api_token }}"
+  no_log: true
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_api_token != ""
+
+- name: Check Cloudflare API token file (fallback)
   ansible.builtin.stat:
     path: "{{ cloudflared_token_file }}"
   register: cf_token_file
-  when: _cf_k8s_state == 'present'
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_api_token == ""
 
-- name: Skip if token file missing
+- name: Skip if token unavailable
   ansible.builtin.meta: end_play
   when:
     - _cf_k8s_state == 'present'
+    - cloudflared_api_token == ""
     - not cf_token_file.stat.exists or cf_token_file.stat.size == 0
 
-- name: Read Cloudflare API token
+- name: Read Cloudflare API token from file (fallback)
   ansible.builtin.slurp:
     src: "{{ cloudflared_token_file }}"
   register: cf_token_raw
   no_log: true
-  when: _cf_k8s_state == 'present'
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_api_token == ""
 
-- name: Set token fact
+- name: Set token fact from file (fallback)
   ansible.builtin.set_fact:
     cf_token: "{{ cf_token_raw.content | b64decode | trim }}"
   no_log: true
-  when: _cf_k8s_state == 'present'
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_api_token == ""
 
 - name: Create tunnel via Cloudflare API
   ansible.builtin.uri:

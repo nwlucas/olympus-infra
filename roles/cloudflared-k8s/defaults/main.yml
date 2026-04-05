@@ -3,6 +3,8 @@ cloudflared_k8s_state: present
 cloudflared_namespace: cloudflared
 cloudflared_tunnel_name: ""
 cloudflared_hostname: ""
+# Prefer cloudflared_api_token var (from vault); fall back to file on host
+cloudflared_api_token: ""
 cloudflared_token_file: "/etc/olympus/cloudflare-api-token"
 cloudflared_account_id: ""   # set in group_vars
 cloudflared_image: "cloudflare/cloudflared:latest"

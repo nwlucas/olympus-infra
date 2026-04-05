@@ -47,3 +47,48 @@
     mode: "0755"
   become: true
   when: bootstrap_user_state == "present"
+
+- name: Create /etc/olympus credential directory
+  ansible.builtin.file:
+    path: "{{ bootstrap_creds_dest }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+  when: bootstrap_user_state == "present"
+
+- name: Stat each credential file on the controller
+  ansible.builtin.stat:
+    path: "{{ bootstrap_creds_src }}/{{ item }}"
+  register: cred_stat
+  loop: "{{ bootstrap_cred_files }}"
+  delegate_to: localhost
+  become: false
+  when: bootstrap_user_state == "present"
+
+- name: Copy credential files to /etc/olympus
+  ansible.builtin.copy:
+    src: "{{ bootstrap_creds_src }}/{{ item.item }}"
+    dest: "{{ bootstrap_creds_dest }}/{{ item.item }}"
+    owner: "{{ bootstrap_user_name }}"
+    group: "{{ bootstrap_user_name }}"
+    mode: "0600"
+  loop: "{{ cred_stat.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - bootstrap_user_state == "present"
+    - item.stat.exists
+    - item.stat.size > 0
+  become: true
+
+- name: Warn about missing credential files
+  ansible.builtin.debug:
+    msg: "WARNING: {{ item.item }} not found at {{ bootstrap_creds_src }}/ — skipping"
+  loop: "{{ cred_stat.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - bootstrap_user_state == "present"
+    - not item.stat.exists
