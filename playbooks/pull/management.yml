@@ -1,0 +1,34 @@
+---
+# Pull-mode playbook for management host
+# Runs daily at 02:00 via crontab as the ansible user.
+# Non-destructive: health checks only, no installs.
+# Full installs/changes are done via push playbooks.
+
+- name: Management Host — Health Checks
+  hosts: management
+  gather_facts: true
+
+  tasks:
+    - name: Check k3s service is running
+      ansible.builtin.systemd:
+        name: k3s
+      register: k3s_status
+      failed_when: false
+      changed_when: false
+
+    - name: Report k3s status
+      ansible.builtin.debug:
+        msg: "k3s service state: {{ k3s_status.status.ActiveState | default('unknown') }}"
+
+    - name: Check Tailscale status
+      ansible.builtin.command: tailscale status --json
+      register: ts_status
+      failed_when: false
+      changed_when: false
+
+    - name: Report Tailscale status
+      ansible.builtin.debug:
+        msg: >
+          Tailscale BackendState:
+          {{ (ts_status.stdout | from_json).BackendState | default('unknown') }}
+      when: ts_status.rc == 0
