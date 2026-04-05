@@ -1,0 +1,76 @@
+---
+- name: Set 1password-connect state
+  ansible.builtin.set_fact:
+    _1pw_state: "{{ onepassword_connect_state | default('present') }}"
+
+- name: Check credentials file
+  ansible.builtin.stat:
+    path: "{{ onepassword_connect_credentials_file }}"
+  register: creds_file
+  when: _1pw_state == 'present'
+
+- name: Skip if credentials file missing
+  ansible.builtin.meta: end_play
+  when:
+    - _1pw_state == 'present'
+    - not creds_file.stat.exists or creds_file.stat.size == 0
+
+- name: Add 1Password Helm repo
+  ansible.builtin.command: >
+    helm repo add 1password
+    https://1password.github.io/connect-helm-charts
+  register: repo_add
+  changed_when: "'already exists' not in repo_add.stderr"
+  when: _1pw_state == 'present'
+
+- name: Update Helm repos
+  ansible.builtin.command: helm repo update
+  changed_when: false
+  when: _1pw_state == 'present'
+
+- name: Create 1password namespace
+  ansible.builtin.command: kubectl create namespace {{ onepassword_connect_namespace }}
+  register: ns_create
+  failed_when:
+    - ns_create.rc != 0
+    - "'already exists' not in ns_create.stderr"
+  changed_when: ns_create.rc == 0
+  when: _1pw_state == 'present'
+
+- name: Create credentials secret from file
+  ansible.builtin.shell: |
+    set -o pipefail
+    kubectl create secret generic op-credentials \
+      --from-file=1password-credentials.json={{ onepassword_connect_credentials_file }} \
+      -n {{ onepassword_connect_namespace }} \
+      --dry-run=client -o yaml | kubectl apply -f -
+  args:
+    executable: /bin/bash
+  changed_when: true
+  when: _1pw_state == 'present'
+
+- name: Install 1Password Connect via Helm
+  ansible.builtin.command: >
+    helm upgrade --install connect 1password/connect
+    --namespace {{ onepassword_connect_namespace }}
+    --version {{ onepassword_connect_chart_version }}
+    --set connect.serviceType=ClusterIP
+    --wait
+  changed_when: true
+  when: _1pw_state == 'present'
+
+- name: Wait for Connect pod to be ready
+  ansible.builtin.command: >
+    kubectl wait pod
+    --for=condition=Ready
+    --selector=app.kubernetes.io/name=connect
+    -n {{ onepassword_connect_namespace }}
+    --timeout=120s
+  changed_when: false
+  when: _1pw_state == 'present'
+
+- name: Uninstall 1Password Connect
+  ansible.builtin.command: helm uninstall connect -n {{ onepassword_connect_namespace }}
+  failed_when: false
+  changed_when: true
+  when: _1pw_state == 'absent'

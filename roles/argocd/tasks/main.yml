@@ -1,0 +1,117 @@
+---
+- name: Set argocd state
+  ansible.builtin.set_fact:
+    _argocd_state: "{{ argocd_state | default('present') }}"
+
+- name: Add ArgoCD Helm repo
+  ansible.builtin.command: >
+    helm repo add argo https://argoproj.github.io/argo-helm
+  register: repo_add
+  changed_when: "'already exists' not in repo_add.stderr"
+  when: _argocd_state == 'present'
+
+- name: Update Helm repos
+  ansible.builtin.command: helm repo update
+  changed_when: false
+  when: _argocd_state == 'present'
+
+- name: Create argocd namespace
+  ansible.builtin.command: kubectl create namespace {{ argocd_namespace }}
+  register: ns_create
+  failed_when:
+    - ns_create.rc != 0
+    - "'already exists' not in ns_create.stderr"
+  changed_when: ns_create.rc == 0
+  when: _argocd_state == 'present'
+
+- name: Install ArgoCD via Helm
+  ansible.builtin.command: >
+    helm upgrade --install argocd argo/argo-cd
+    --namespace {{ argocd_namespace }}
+    --version {{ argocd_chart_version }}
+    --set server.service.type=ClusterIP
+    --wait --timeout 5m
+  changed_when: true
+  when: _argocd_state == 'present'
+
+- name: Wait for ArgoCD server to be ready
+  ansible.builtin.command: >
+    kubectl wait pod
+    --for=condition=Ready
+    --selector=app.kubernetes.io/name=argocd-server
+    -n {{ argocd_namespace }}
+    --timeout=180s
+  changed_when: false
+  when: _argocd_state == 'present'
+
+- name: Get ArgoCD initial admin password
+  ansible.builtin.shell: |
+    set -o pipefail
+    kubectl -n {{ argocd_namespace }} get secret argocd-initial-admin-secret \
+      -o jsonpath="{.data.password}" | base64 -d
+  args:
+    executable: /bin/bash
+  register: argocd_initial_password
+  changed_when: false
+  when: _argocd_state == 'present'
+
+- name: Print ArgoCD initial admin password
+  ansible.builtin.debug:
+    msg: "ArgoCD initial admin password: {{ argocd_initial_password.stdout }}"
+  when: _argocd_state == 'present'
+
+# --- CLUSTER REGISTRATION (runs when argocd_register_cluster: true, e.g. on mac-studio) ---
+- name: Install argocd CLI (macOS)
+  community.general.homebrew:
+    name: argocd
+    state: present
+  when:
+    - _argocd_state == 'present'
+    - argocd_register_cluster | default(false)
+    - ansible_system == 'Darwin'
+
+- name: Patch colima kubeconfig server URL to Tailscale IP
+  ansible.builtin.command: >
+    kubectl config set-cluster {{ argocd_cluster_context }}
+    --server=https://{{ mac_studio_tailscale_ip }}:6443
+  changed_when: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_register_cluster | default(false)
+
+- name: Fail if argocd_admin_password not set for cluster registration
+  ansible.builtin.fail:
+    msg: "argocd_admin_password must be set in group_vars before running cluster registration"
+  when:
+    - _argocd_state == 'present'
+    - argocd_register_cluster | default(false)
+    - argocd_admin_password == ""
+
+- name: Log in to ArgoCD CLI
+  ansible.builtin.command: >
+    argocd login {{ management_tailscale_ip }}
+    --username admin
+    --password {{ argocd_admin_password }}
+    --insecure
+    --grpc-web
+  no_log: true
+  changed_when: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_register_cluster | default(false)
+
+- name: Register cluster in ArgoCD
+  ansible.builtin.command: >
+    argocd cluster add {{ argocd_cluster_context }}
+    --name {{ argocd_cluster_name }}
+    --yes
+  changed_when: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_register_cluster | default(false)
+
+- name: Uninstall ArgoCD
+  ansible.builtin.command: helm uninstall argocd -n {{ argocd_namespace }}
+  failed_when: false
+  changed_when: true
+  when: _argocd_state == 'absent'

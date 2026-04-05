@@ -1,0 +1,6 @@
+---
+traefik_state: present
+traefik_namespace: traefik
+traefik_chart_version: "28.0.0"
+traefik_repo_url: "https://helm.traefik.io/traefik"
+traefik_values_file: ""   # optional path to values override file

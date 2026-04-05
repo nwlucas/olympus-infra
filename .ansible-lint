@@ -1,0 +1,8 @@
+---
+# ansible-lint configuration
+profile: basic
+
+# Skip rules that are cosmetic/naming preferences and consistent across all roles
+skip_list:
+  - var-naming[no-role-prefix]  # register vars and cross-role vars intentionally short
+  - role-name                   # hyphenated role names (1password-connect, cloudflared-k8s) are intentional

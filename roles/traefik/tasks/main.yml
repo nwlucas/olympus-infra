@@ -1,0 +1,71 @@
+---
+- name: Set traefik state
+  ansible.builtin.set_fact:
+    _traefik_state: "{{ traefik_state | default('present') }}"
+
+- name: Install helm (macOS)
+  community.general.homebrew:
+    name: helm
+    state: present
+  when:
+    - _traefik_state == 'present'
+    - ansible_system == 'Darwin'
+
+- name: Install helm (Linux)
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    creates: /usr/local/bin/helm
+    executable: /bin/bash
+  become: true
+  when:
+    - _traefik_state == 'present'
+    - ansible_system == 'Linux'
+
+- name: Add Traefik Helm repo
+  ansible.builtin.command: helm repo add traefik {{ traefik_repo_url }}
+  register: repo_add
+  changed_when: "'already exists' not in repo_add.stderr"
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path | default(ansible_env.HOME + '/.kube/config') }}"
+  when: _traefik_state == 'present'
+
+- name: Update Helm repos
+  ansible.builtin.command: helm repo update
+  when: _traefik_state == 'present'
+  changed_when: false
+
+- name: Create traefik namespace
+  ansible.builtin.command: kubectl create namespace {{ traefik_namespace }}
+  register: ns_create
+  failed_when:
+    - ns_create.rc != 0
+    - "'already exists' not in ns_create.stderr"
+  changed_when: ns_create.rc == 0
+  when: _traefik_state == 'present'
+
+- name: Check if Traefik is already installed
+  ansible.builtin.command: helm status traefik -n {{ traefik_namespace }}
+  register: traefik_status
+  failed_when: false
+  changed_when: false
+  when: _traefik_state == 'present'
+
+- name: Install Traefik via Helm
+  ansible.builtin.command: >
+    helm upgrade --install traefik traefik/traefik
+    --namespace {{ traefik_namespace }}
+    --version {{ traefik_chart_version }}
+    {{ '--values ' + traefik_values_file if traefik_values_file else '' }}
+    --wait
+  changed_when: true
+  when:
+    - _traefik_state == 'present'
+    - traefik_status.rc != 0
+
+- name: Uninstall Traefik
+  ansible.builtin.command: helm uninstall traefik -n {{ traefik_namespace }}
+  failed_when: false
+  changed_when: true
+  when: _traefik_state == 'absent'

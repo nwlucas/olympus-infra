@@ -1,0 +1,13 @@
+---
+k3s_state: present
+k3s_version: "latest"
+k3s_config_dir: /etc/rancher/k3s
+k3s_kubeconfig_path: /etc/rancher/k3s/k3s.yaml
+k3s_kubeconfig_users:
+  - nwilliams-lucas
+  - ansible
+# Colima (macOS) settings — used by darwin.yml in Phase 3
+colima_profile: olympus
+colima_runtime: k3s
+colima_cpus: 4
+colima_memory: 12

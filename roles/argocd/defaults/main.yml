@@ -1,0 +1,12 @@
+---
+argocd_state: present
+argocd_namespace: argocd
+argocd_chart_version: "7.7.0"   # Helm chart version for ArgoCD 2.10.x
+argocd_server: ""               # external hostname (set in group_vars)
+management_tailscale_ip: ""     # set in inventories/group_vars/management.yml after tailscale join
+# Cluster registration (set to true when running on mac-studio)
+argocd_register_cluster: false
+argocd_cluster_name: ""
+argocd_cluster_context: ""
+# ArgoCD admin password — set in group_vars/mac_studio.yml after management bootstrap prints it
+argocd_admin_password: ""

@@ -1,0 +1,7 @@
+---
+onepassword_connect_state: present
+onepassword_connect_namespace: "1password"
+onepassword_connect_chart_version: "1.15.0"
+onepassword_connect_credentials_file: "/etc/olympus/1password-credentials.json"
+onepassword_connect_token_file: "/etc/olympus/onepassword-connect-token"
+onepassword_connect_port: 8080

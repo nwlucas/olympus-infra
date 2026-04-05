@@ -1,0 +1,7 @@
+---
+- name: Set k3s state
+  ansible.builtin.set_fact:
+    _k3s_state: "{{ k3s_state | default('present') }}"
+
+- name: Include platform tasks
+  ansible.builtin.include_tasks: "{{ ansible_system | lower }}.yml"

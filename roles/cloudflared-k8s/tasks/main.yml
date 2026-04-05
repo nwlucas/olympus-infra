@@ -1,0 +1,149 @@
+---
+- name: Set cloudflared-k8s state
+  ansible.builtin.set_fact:
+    _cf_k8s_state: "{{ cloudflared_k8s_state | default('present') }}"
+
+- name: Check Cloudflare API token file
+  ansible.builtin.stat:
+    path: "{{ cloudflared_token_file }}"
+  register: cf_token_file
+  when: _cf_k8s_state == 'present'
+
+- name: Skip if token file missing
+  ansible.builtin.meta: end_play
+  when:
+    - _cf_k8s_state == 'present'
+    - not cf_token_file.stat.exists or cf_token_file.stat.size == 0
+
+- name: Read Cloudflare API token
+  ansible.builtin.slurp:
+    src: "{{ cloudflared_token_file }}"
+  register: cf_token_raw
+  no_log: true
+  when: _cf_k8s_state == 'present'
+
+- name: Set token fact
+  ansible.builtin.set_fact:
+    cf_token: "{{ cf_token_raw.content | b64decode | trim }}"
+  no_log: true
+  when: _cf_k8s_state == 'present'
+
+- name: Create tunnel via Cloudflare API
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/accounts/{{ cloudflared_account_id }}/cfd_tunnel"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ cf_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      name: "{{ cloudflared_tunnel_name }}"
+      config_src: cloudflare
+    status_code: [200, 409]   # 409 = already exists
+  register: tunnel_create
+  no_log: true
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_tunnel_name != ""
+
+- name: Get existing tunnel if already created
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/accounts/{{ cloudflared_account_id }}/cfd_tunnel?name={{ cloudflared_tunnel_name }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cf_token }}"
+    status_code: 200
+  register: tunnel_list
+  no_log: true
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_tunnel_name != ""
+
+- name: Fail if tunnel not found
+  ansible.builtin.fail:
+    msg: "Tunnel '{{ cloudflared_tunnel_name }}' not found via Cloudflare API"
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_tunnel_name != ""
+    - tunnel_list.json.result | length == 0
+
+- name: Set tunnel ID
+  ansible.builtin.set_fact:
+    cloudflared_tunnel_id: "{{ tunnel_list.json.result[0].id }}"
+  when:
+    - _cf_k8s_state == 'present'
+    - tunnel_list.json.result | length > 0
+
+- name: Create cloudflared namespace
+  ansible.builtin.command: kubectl create namespace {{ cloudflared_namespace }}
+  register: cf_ns_create
+  failed_when:
+    - cf_ns_create.rc != 0
+    - "'already exists' not in cf_ns_create.stderr"
+  changed_when: cf_ns_create.rc == 0
+  when: _cf_k8s_state == 'present'
+
+- name: Get tunnel token
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/accounts/{{ cloudflared_account_id }}/cfd_tunnel/{{ cloudflared_tunnel_id }}/token"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cf_token }}"
+    status_code: 200
+  register: tunnel_token_resp
+  no_log: true
+  when: _cf_k8s_state == 'present'
+
+- name: Create cloudflared tunnel secret
+  ansible.builtin.shell: |
+    set -o pipefail
+    kubectl create secret generic cloudflared-creds \
+      --from-literal=tunnel-token={{ tunnel_token_resp.json.result }} \
+      -n {{ cloudflared_namespace }} \
+      --dry-run=client -o yaml | kubectl apply -f -
+  args:
+    executable: /bin/bash
+  no_log: true
+  changed_when: true
+  when: _cf_k8s_state == 'present'
+
+- name: Apply cloudflared ConfigMap
+  ansible.builtin.template:
+    src: configmap.yaml.j2
+    dest: /tmp/cloudflared-configmap.yaml
+    mode: '0600'
+  register: configmap_rendered
+  when: _cf_k8s_state == 'present'
+
+- name: Apply ConfigMap to cluster
+  ansible.builtin.command: kubectl apply -f /tmp/cloudflared-configmap.yaml
+  changed_when: true
+  when: _cf_k8s_state == 'present'
+
+- name: Apply cloudflared Deployment
+  ansible.builtin.template:
+    src: deployment.yaml.j2
+    dest: /tmp/cloudflared-deployment.yaml
+    mode: '0600'
+  when: _cf_k8s_state == 'present'
+
+- name: Apply Deployment to cluster
+  ansible.builtin.command: kubectl apply -f /tmp/cloudflared-deployment.yaml
+  changed_when: true
+  when: _cf_k8s_state == 'present'
+
+- name: Wait for cloudflared pod to be ready
+  ansible.builtin.command: >
+    kubectl wait pod
+    --for=condition=Ready
+    --selector=app=cloudflared
+    -n {{ cloudflared_namespace }}
+    --timeout=120s
+  changed_when: false
+  when: _cf_k8s_state == 'present'
+
+- name: Tear down cloudflared k8s resources
+  ansible.builtin.command: kubectl delete namespace {{ cloudflared_namespace }}
+  failed_when: false
+  changed_when: true
+  when: _cf_k8s_state == 'absent'
