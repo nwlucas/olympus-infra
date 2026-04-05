@@ -1,0 +1,24 @@
+---
+- name: Install ansible (Linux)
+  ansible.builtin.apt:
+    name:
+      - ansible
+      - git
+    state: "{{ 'present' if ansible_pull_state == 'present' else 'absent' }}"
+    update_cache: true
+  become: true
+
+- name: Schedule ansible-pull via crontab (Linux)
+  ansible.builtin.cron:
+    name: olympus-ansible-pull
+    user: "{{ ansible_user }}"
+    hour: "{{ ansible_pull_hour }}"
+    minute: "{{ ansible_pull_minute }}"
+    job: >-
+      {{ ansible_pull_bin_linux }}
+      -U {{ ansible_pull_repo }}
+      -i {{ ansible_pull_inventory }}
+      {{ ansible_pull_playbook }}
+      >> {{ ansible_pull_log_file }} 2>&1
+    state: "{{ ansible_pull_state }}"
+  become: true

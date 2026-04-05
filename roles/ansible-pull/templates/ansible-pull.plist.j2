@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.olympus.ansible-pull</string>
+  <key>UserName</key>
+  <string>{{ ansible_user }}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{ ansible_pull_bin_macos }}</string>
+    <string>-U</string>
+    <string>{{ ansible_pull_repo }}</string>
+    <string>-i</string>
+    <string>{{ ansible_pull_inventory }}</string>
+    <string>{{ ansible_pull_playbook }}</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>{{ ansible_pull_hour }}</integer>
+    <key>Minute</key>
+    <integer>{{ ansible_pull_minute }}</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>{{ ansible_pull_log_file }}</string>
+  <key>StandardErrorPath</key>
+  <string>{{ ansible_pull_log_file }}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/var/ansible</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>

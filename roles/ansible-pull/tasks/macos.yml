@@ -1,0 +1,40 @@
+---
+- name: Install ansible via Homebrew (macOS)
+  community.general.homebrew:
+    name:
+      - ansible
+      - git
+    state: "{{ 'present' if ansible_pull_state == 'present' else 'absent' }}"
+
+- name: Install ansible-pull LaunchDaemon plist (macOS)
+  ansible.builtin.template:
+    src: ansible-pull.plist.j2
+    dest: /Library/LaunchDaemons/com.olympus.ansible-pull.plist
+    owner: root
+    group: wheel
+    mode: "0644"
+  become: true
+  when: ansible_pull_state == "present"
+
+- name: Load ansible-pull LaunchDaemon (macOS)
+  ansible.builtin.command: >
+    launchctl load -w /Library/LaunchDaemons/com.olympus.ansible-pull.plist
+  become: true
+  changed_when: true
+  failed_when: false
+  when: ansible_pull_state == "present"
+
+- name: Unload ansible-pull LaunchDaemon (macOS)
+  ansible.builtin.command: >
+    launchctl unload -w /Library/LaunchDaemons/com.olympus.ansible-pull.plist
+  become: true
+  failed_when: false
+  changed_when: true
+  when: ansible_pull_state == "absent"
+
+- name: Remove ansible-pull LaunchDaemon plist (macOS)
+  ansible.builtin.file:
+    path: /Library/LaunchDaemons/com.olympus.ansible-pull.plist
+    state: absent
+  become: true
+  when: ansible_pull_state == "absent"
