@@ -13,6 +13,10 @@ bootstrap_creds_src: "~/olympus-creds"
 bootstrap_creds_dest: /etc/olympus
 
 # Credential files to copy from bootstrap_creds_src → bootstrap_creds_dest
-bootstrap_cred_files:
-  - cloudflare-api-token        # plaintext API token, one line
-  - 1password-credentials.json  # JSON from 1Password Connect server setup
+# Note: cloudflare-api-token and 1password-credentials.json come from vault vars now;
+# add any extra files here only if they don't have a vault var equivalent
+bootstrap_cred_files: []
+
+# 1Password Connect credentials JSON (set via vault var onepassword_credentials_json)
+# If non-empty, written to bootstrap_creds_dest/1password-credentials.json
+onepassword_credentials_json: ""
