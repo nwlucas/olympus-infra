@@ -1,0 +1,111 @@
+---
+- name: Install Tailscale via Homebrew
+  community.general.homebrew:
+    name: tailscale
+    state: "{{ 'present' if tailscale_state == 'present' else 'absent' }}"
+
+- name: Stop Tailscale service (macOS, absent)
+  ansible.builtin.command: /opt/homebrew/bin/brew services stop tailscale
+  become: true
+  failed_when: false
+  changed_when: true
+  when: tailscale_state == "absent"
+
+- name: Start Tailscale daemon (macOS)
+  ansible.builtin.command: /opt/homebrew/bin/brew services start tailscale
+  become: true
+  register: ts_start
+  changed_when: ts_start.rc == 0
+  failed_when: false
+  when: tailscale_state == "present"
+
+- name: Wait for Tailscale socket to appear (macOS)
+  ansible.builtin.wait_for:
+    path: /var/run/tailscale/tailscaled.sock
+    timeout: 30
+  when: tailscale_state == "present"
+
+- name: Check Tailscale backend state
+  ansible.builtin.command: /opt/homebrew/bin/tailscale status --json
+  register: ts_status
+  failed_when: false
+  changed_when: false
+  when: tailscale_state == "present"
+
+- name: Set tailscale_is_running fact
+  ansible.builtin.set_fact:
+    tailscale_is_running: >-
+      {{ (ts_status.stdout | from_json).BackendState == "Running"
+         if ts_status.rc == 0 else false }}
+  when: tailscale_state == "present"
+
+- name: Generate Tailscale ephemeral auth key via OAuth API
+  ansible.builtin.uri:
+    url: https://api.tailscale.com/api/v2/oauth/token
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: client_credentials
+      client_id: "{{ tailscale_oauth_client_id }}"
+      client_secret: "{{ tailscale_oauth_client_secret }}"
+    status_code: 200
+  register: ts_oauth_token
+  no_log: true
+  when:
+    - tailscale_state == "present"
+    - not tailscale_is_running
+    - tailscale_oauth_client_id != ""
+    - tailscale_oauth_client_secret != ""
+
+- name: Create ephemeral auth key via Tailscale API
+  ansible.builtin.uri:
+    url: https://api.tailscale.com/api/v2/tailnet/-/keys
+    method: POST
+    headers:
+      Authorization: "Bearer {{ ts_oauth_token.json.access_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      capabilities:
+        devices:
+          create:
+            reusable: false
+            ephemeral: true
+            preauthorized: true
+            tags: []
+      expirySeconds: 300
+    status_code: 200
+  register: ts_auth_key
+  no_log: true
+  when:
+    - tailscale_state == "present"
+    - not tailscale_is_running
+    - tailscale_oauth_client_id != ""
+    - ts_oauth_token is defined and ts_oauth_token.status == 200
+
+- name: Join Tailscale network with ephemeral key
+  ansible.builtin.command: >
+    /opt/homebrew/bin/tailscale up
+    --authkey={{ ts_auth_key.json.key }}
+    --hostname={{ tailscale_hostname }}
+    --accept-routes={{ tailscale_accept_routes | lower }}
+    {% if tailscale_advertise_exit_node %}--advertise-exit-node{% endif %}
+  no_log: true
+  changed_when: true
+  when:
+    - tailscale_state == "present"
+    - not tailscale_is_running
+    - ts_auth_key is defined and ts_auth_key.status == 200
+
+- name: Tailscale already connected — skip join
+  ansible.builtin.debug:
+    msg: "Tailscale already running on {{ tailscale_hostname }}, skipping join."
+  when:
+    - tailscale_state == "present"
+    - tailscale_is_running
+
+- name: Tailscale disconnect (absent)
+  ansible.builtin.command: /opt/homebrew/bin/tailscale down
+  failed_when: false
+  changed_when: true
+  when: tailscale_state == "absent"
