@@ -1,5 +1,8 @@
 ---
-tailscale_auth_key: ""
+tailscale_state: present
 tailscale_hostname: ""
 tailscale_accept_routes: true
 tailscale_advertise_exit_node: false
+# OAuth client credentials (from 1Password item: ansible-tailscale-oauth)
+tailscale_oauth_client_id: ""
+tailscale_oauth_client_secret: ""

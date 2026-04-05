@@ -1,5 +1,5 @@
 ---
+litellm_state: present
 litellm_port: 4000
-litellm_config_src: "{{ playbook_dir }}/../../../config/litellm/config.yaml"
-litellm_config_dest: "/Users/{{ ansible_user }}/.config/litellm/config.yaml"
+litellm_config_dest: /opt/litellm/config.yaml
 litellm_log_level: INFO

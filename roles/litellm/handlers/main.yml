@@ -1,13 +1,6 @@
 ---
 - name: Restart LiteLLM
-  ansible.builtin.command: >
-    launchctl kickstart -k gui/{{ ansible_user_uid | default(501) }}/com.litellm.proxy
+  ansible.builtin.command: launchctl kickstart -k system/com.litellm.proxy
+  become: true
   failed_when: false
   changed_when: true
-
-- name: Load LiteLLM launchd
-  ansible.builtin.command: >
-    launchctl load -w
-    /Users/{{ ansible_user }}/Library/LaunchAgents/com.litellm.proxy.plist
-  changed_when: true
-  failed_when: false
