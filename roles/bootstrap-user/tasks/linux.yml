@@ -1,0 +1,49 @@
+---
+- name: Create ansible user (Linux)
+  ansible.builtin.user:
+    name: "{{ bootstrap_user_name }}"
+    home: "{{ bootstrap_user_home_linux }}"
+    shell: "{{ bootstrap_user_shell }}"
+    groups: sudo
+    append: true
+    create_home: true
+    state: "{{ bootstrap_user_state }}"
+  become: true
+
+- name: Grant ansible user passwordless sudo (Linux)
+  ansible.builtin.copy:
+    content: "{{ bootstrap_user_name }} ALL=(ALL) NOPASSWD:ALL\n"
+    dest: "/etc/sudoers.d/{{ bootstrap_user_name }}"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+  become: true
+  when: bootstrap_user_state == "present"
+
+- name: Remove ansible sudoers file (Linux)
+  ansible.builtin.file:
+    path: "/etc/sudoers.d/{{ bootstrap_user_name }}"
+    state: absent
+  become: true
+  when: bootstrap_user_state == "absent"
+
+- name: Ensure ansible .ssh directory exists (Linux)
+  ansible.builtin.file:
+    path: "{{ bootstrap_user_home_linux }}/.ssh"
+    state: directory
+    owner: "{{ bootstrap_user_name }}"
+    group: "{{ bootstrap_user_name }}"
+    mode: "0700"
+  become: true
+  when: bootstrap_user_state == "present"
+
+- name: Ensure ansible-pull log directory exists (Linux)
+  ansible.builtin.file:
+    path: /var/log/ansible-pull
+    state: directory
+    owner: "{{ bootstrap_user_name }}"
+    group: "{{ bootstrap_user_name }}"
+    mode: "0755"
+  become: true
+  when: bootstrap_user_state == "present"

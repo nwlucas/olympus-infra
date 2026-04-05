@@ -1,0 +1,88 @@
+---
+- name: Check if ansible user exists (macOS)
+  ansible.builtin.command: id {{ bootstrap_user_name }}
+  register: ansible_user_check
+  failed_when: false
+  changed_when: false
+
+- name: Create ansible user via sysadminctl (macOS)
+  ansible.builtin.command: >
+    sysadminctl
+    -addUser {{ bootstrap_user_name }}
+    -fullName "Ansible Automation"
+    -home {{ bootstrap_user_home_macos }}
+    -shell {{ bootstrap_user_shell }}
+    -admin
+  become: true
+  when:
+    - bootstrap_user_state == "present"
+    - ansible_user_check.rc != 0
+
+- name: Hide ansible user from login window (macOS)
+  ansible.builtin.command: dscl . -create /Users/{{ bootstrap_user_name }} IsHidden 1
+  become: true
+  when:
+    - bootstrap_user_state == "present"
+    - ansible_user_check.rc != 0
+
+- name: Set ansible user shell (macOS)
+  ansible.builtin.command: dscl . -create /Users/{{ bootstrap_user_name }} UserShell {{ bootstrap_user_shell }}
+  become: true
+  when:
+    - bootstrap_user_state == "present"
+    - ansible_user_check.rc != 0
+
+- name: Ensure ansible user home directory exists (macOS)
+  ansible.builtin.file:
+    path: "{{ bootstrap_user_home_macos }}"
+    state: directory
+    owner: "{{ bootstrap_user_name }}"
+    group: admin
+    mode: "0755"
+  become: true
+  when: bootstrap_user_state == "present"
+
+- name: Ensure ansible .ssh directory exists (macOS)
+  ansible.builtin.file:
+    path: "{{ bootstrap_user_home_macos }}/.ssh"
+    state: directory
+    owner: "{{ bootstrap_user_name }}"
+    group: admin
+    mode: "0700"
+  become: true
+  when: bootstrap_user_state == "present"
+
+- name: Grant ansible user passwordless sudo (macOS)
+  ansible.builtin.copy:
+    content: "{{ bootstrap_user_name }} ALL=(ALL) NOPASSWD:ALL\n"
+    dest: "/etc/sudoers.d/{{ bootstrap_user_name }}"
+    owner: root
+    group: wheel
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+  become: true
+  when: bootstrap_user_state == "present"
+
+- name: Ensure ansible-pull log directory exists (macOS)
+  ansible.builtin.file:
+    path: /var/log/ansible-pull
+    state: directory
+    owner: "{{ bootstrap_user_name }}"
+    group: admin
+    mode: "0755"
+  become: true
+  when: bootstrap_user_state == "present"
+
+- name: Remove ansible user (macOS)
+  ansible.builtin.command: sysadminctl -deleteUser {{ bootstrap_user_name }}
+  become: true
+  when:
+    - bootstrap_user_state == "absent"
+    - ansible_user_check.rc == 0
+
+- name: Remove ansible sudoers file (macOS)
+  ansible.builtin.file:
+    path: "/etc/sudoers.d/{{ bootstrap_user_name }}"
+    state: absent
+  become: true
+  when: bootstrap_user_state == "absent"

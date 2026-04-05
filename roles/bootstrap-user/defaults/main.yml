@@ -1,0 +1,13 @@
+---
+bootstrap_user_state: present
+bootstrap_user_name: ansible
+bootstrap_user_home_linux: /home/ansible
+bootstrap_user_home_macos: /var/ansible
+bootstrap_user_shell: /bin/bash
+
+# Source directory on the connecting user's account (nwilliams-lucas)
+# Files here are copied to /etc/olympus/ after the ansible user is created
+bootstrap_creds_src: "~/olympus-creds"
+
+# Destination on the remote host
+bootstrap_creds_dest: /etc/olympus
