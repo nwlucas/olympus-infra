@@ -53,11 +53,11 @@
     KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   when: _1pw_state == 'present'
 
-- name: Create credentials secret from file
+- name: Create credentials secret (base64-encoded — required by Connect Helm chart 1.14+)
   ansible.builtin.shell: |
     set -o pipefail
     kubectl create secret generic op-credentials \
-      --from-file=1password-credentials.json={{ onepassword_connect_credentials_file }} \
+      --from-literal=1password-credentials.json="$(base64 < {{ onepassword_connect_credentials_file }})" \
       -n {{ onepassword_connect_namespace }} \
       --dry-run=client -o yaml | kubectl apply -f -
   args:
