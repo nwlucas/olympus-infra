@@ -100,15 +100,43 @@
     - argocd_hostname != ""
 
 # --- KUBECONFIG UPLOAD TO 1PASSWORD ---
+# Runs on localhost (control machine) where op CLI is available.
+# Slurps the kubeconfig from the remote host first.
+- name: Read kubeconfig from remote host
+  ansible.builtin.slurp:
+    src: "{{ k3s_kubeconfig_path }}"
+  register: _remote_kubeconfig
+  become: true
+  no_log: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_kubeconfig_1password_item != ""
+
 - name: Check if kubeconfig already exists in 1Password
   ansible.builtin.command: >
-    op item get "{{ argocd_kubeconfig_1password_item }}" --vault {{ argocd_kubeconfig_1password_vault }} --fields label=kubeconfig
+    op item get "{{ argocd_kubeconfig_1password_item }}"
+    --vault {{ argocd_kubeconfig_1password_vault }}
+    --fields label=kubeconfig
   register: _op_kubeconfig_check
   failed_when: false
   changed_when: false
+  delegate_to: localhost
+  become: false
   environment:
     OP_CONNECT_HOST: "{{ onepassword_connect_host | default('') }}"
     OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token | default('') }}"
+  when:
+    - _argocd_state == 'present'
+    - argocd_kubeconfig_1password_item != ""
+
+- name: Write kubeconfig to temp file on localhost
+  ansible.builtin.copy:
+    content: "{{ _remote_kubeconfig.content | b64decode }}"
+    dest: "/tmp/{{ argocd_kubeconfig_1password_item }}.yaml"
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+  no_log: true
   when:
     - _argocd_state == 'present'
     - argocd_kubeconfig_1password_item != ""
@@ -120,10 +148,11 @@
       --category=Login \
       --title="{{ argocd_kubeconfig_1password_item }}" \
       --vault={{ argocd_kubeconfig_1password_vault }} \
-      "kubeconfig[password]=$(cat {{ k3s_kubeconfig_path }})"
+      "kubeconfig[password]=$(cat /tmp/{{ argocd_kubeconfig_1password_item }}.yaml)"
   args:
     executable: /bin/bash
-  become: true
+  delegate_to: localhost
+  become: false
   no_log: true
   changed_when: true
   environment:
@@ -139,10 +168,11 @@
     set -o pipefail
     op item edit "{{ argocd_kubeconfig_1password_item }}" \
       --vault={{ argocd_kubeconfig_1password_vault }} \
-      "kubeconfig[password]=$(cat {{ k3s_kubeconfig_path }})"
+      "kubeconfig[password]=$(cat /tmp/{{ argocd_kubeconfig_1password_item }}.yaml)"
   args:
     executable: /bin/bash
-  become: true
+  delegate_to: localhost
+  become: false
   no_log: true
   changed_when: true
   environment:
@@ -152,6 +182,16 @@
     - _argocd_state == 'present'
     - argocd_kubeconfig_1password_item != ""
     - _op_kubeconfig_check.rc == 0
+
+- name: Remove temp kubeconfig file from localhost
+  ansible.builtin.file:
+    path: "/tmp/{{ argocd_kubeconfig_1password_item }}.yaml"
+    state: absent
+  delegate_to: localhost
+  become: false
+  when:
+    - _argocd_state == 'present'
+    - argocd_kubeconfig_1password_item != ""
 
 # --- LOCAL CLUSTER APP CREATION ---
 # Creates ArgoCD Applications pointing to the local cluster (https://kubernetes.default.svc).
