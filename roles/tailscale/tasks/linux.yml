@@ -1,16 +1,33 @@
 ---
-- name: Add Tailscale apt repository key
-  ansible.builtin.apt_key:
-    url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
-    state: "{{ 'present' if tailscale_state == 'present' else 'absent' }}"
+- name: Create /etc/apt/keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
   become: true
+  when: tailscale_state == 'present'
+
+- name: Download Tailscale apt signing key
+  ansible.builtin.get_url:
+    url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
+    dest: /etc/apt/keyrings/tailscale.gpg
+    mode: "0644"
+  become: true
+  when: tailscale_state == 'present'
 
 - name: Add Tailscale apt repository
   ansible.builtin.apt_repository:
-    repo: "deb https://pkgs.tailscale.com/stable/ubuntu noble main"
+    repo: "deb [signed-by=/etc/apt/keyrings/tailscale.gpg] https://pkgs.tailscale.com/stable/ubuntu noble main"
     state: "{{ 'present' if tailscale_state == 'present' else 'absent' }}"
     filename: tailscale
   become: true
+
+- name: Remove Tailscale apt signing key
+  ansible.builtin.file:
+    path: /etc/apt/keyrings/tailscale.gpg
+    state: absent
+  become: true
+  when: tailscale_state == 'absent'
 
 - name: Install Tailscale (Linux)
   ansible.builtin.apt:
@@ -31,13 +48,15 @@
   register: ts_status
   failed_when: false
   changed_when: false
+  check_mode: false
   when: tailscale_state == "present"
 
 - name: Set tailscale_is_running fact
   ansible.builtin.set_fact:
     tailscale_is_running: >-
       {{ (ts_status.stdout | from_json).BackendState == "Running"
-         if ts_status.rc == 0 else false }}
+         if (ts_status.rc is defined and ts_status.rc == 0 and ts_status.stdout | length > 0)
+         else false }}
   when: tailscale_state == "present"
 
 - name: Generate Tailscale OAuth access token

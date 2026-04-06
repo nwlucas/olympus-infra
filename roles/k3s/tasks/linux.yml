@@ -17,6 +17,7 @@
     state: started
   become: true
   when: _k3s_state == 'present'
+  ignore_errors: "{{ ansible_check_mode }}"
 
 - name: Wait for k3s to be ready
   ansible.builtin.command: kubectl get nodes
