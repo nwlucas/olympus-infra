@@ -155,6 +155,8 @@
   become: false
   no_log: true
   changed_when: true
+  ignore_errors: true
+  register: _op_create_result
   environment:
     OP_CONNECT_HOST: "{{ onepassword_connect_host | default('') }}"
     OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token | default('') }}"
@@ -162,6 +164,15 @@
     - _argocd_state == 'present'
     - argocd_kubeconfig_1password_item != ""
     - _op_kubeconfig_check.rc != 0
+
+- name: Warn if kubeconfig upload failed (retry after ArgoCD syncs connect-ingress)
+  ansible.builtin.debug:
+    msg: >
+      WARNING: kubeconfig upload to 1Password failed — connect.nwlnexus.net not yet reachable.
+      Re-run with --tags argocd after ArgoCD syncs the connect-ingress app.
+  when:
+    - _op_create_result is defined
+    - _op_create_result.failed | default(false)
 
 - name: Update kubeconfig in 1Password (item exists)
   ansible.builtin.shell: |
@@ -175,6 +186,7 @@
   become: false
   no_log: true
   changed_when: true
+  ignore_errors: true
   environment:
     OP_CONNECT_HOST: "{{ onepassword_connect_host | default('') }}"
     OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token | default('') }}"
