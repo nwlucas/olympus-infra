@@ -1,0 +1,58 @@
+---
+- name: Install OrbStack via Homebrew Cask
+  community.general.homebrew_cask:
+    name: orbstack
+    state: "{{ 'present' if orbstack_state == 'present' else 'absent' }}"
+  become: false
+  when: orbstack_state == 'present'
+
+- name: Launch OrbStack (idempotent — exits immediately if already running)
+  ansible.builtin.command: open -a OrbStack
+  changed_when: false
+  become: false
+  when: orbstack_state == 'present'
+
+- name: Wait for OrbStack CLI to be available
+  ansible.builtin.command: orbctl info
+  register: _orb_ready
+  until: _orb_ready.rc == 0
+  retries: 24
+  delay: 5
+  changed_when: false
+  become: false
+  when: orbstack_state == 'present'
+
+- name: Check if OrbStack Kubernetes context already exists
+  ansible.builtin.command: kubectl config get-contexts {{ orbstack_k8s_context }}
+  register: _orb_k8s_ctx
+  failed_when: false
+  changed_when: false
+  become: false
+  when: orbstack_state == 'present'
+
+- name: Start OrbStack Kubernetes
+  ansible.builtin.command: orbctl start k8s
+  register: _orb_k8s_start
+  changed_when: _orb_k8s_start.rc == 0
+  failed_when: false
+  become: false
+  when:
+    - orbstack_state == 'present'
+    - _orb_k8s_ctx.rc != 0
+
+- name: Wait for OrbStack k8s API to be ready
+  ansible.builtin.command: kubectl --context {{ orbstack_k8s_context }} get nodes
+  register: _orb_k8s_ready
+  until: _orb_k8s_ready.rc == 0
+  retries: 36
+  delay: 5
+  changed_when: false
+  become: false
+  when: orbstack_state == 'present'
+
+- name: Remove OrbStack
+  community.general.homebrew_cask:
+    name: orbstack
+    state: absent
+  become: false
+  when: orbstack_state == 'absent'

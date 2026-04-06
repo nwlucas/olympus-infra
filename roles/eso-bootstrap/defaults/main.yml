@@ -1,0 +1,8 @@
+---
+eso_bootstrap_state: present
+eso_connect_token: ""
+eso_namespace: external-secrets
+# Kubeconfig / context — override for non-k3s clusters
+eso_kubeconfig_path: "~/.kube/config"
+eso_kubectl_context: ""
+eso_kubectl_become: "{{ ansible_system != 'Darwin' }}"

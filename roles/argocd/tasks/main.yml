@@ -149,18 +149,28 @@
     - argocd_register_cluster | default(false)
     - management_tailscale_ip | default('') == ''
 
-- name: Patch colima kubeconfig server URL to Tailscale IP
+- name: Get local Tailscale IP (for kubeconfig server URL)
+  ansible.builtin.command: tailscale ip -4
+  register: _local_tailscale_ip
+  changed_when: false
+  become: false
+  when:
+    - _argocd_state == 'present'
+    - argocd_register_cluster | default(false)
+
+- name: Patch kubeconfig server URL to local Tailscale IP
   ansible.builtin.command: >
     kubectl config set-cluster {{ argocd_cluster_context }}
-    --server=https://{{ mac_studio_tailscale_ip }}:6443
+    --server=https://{{ _local_tailscale_ip.stdout | trim }}:6443
   changed_when: true
+  become: false
   when:
     - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
 
 - name: Fail if argocd_admin_password not set for cluster registration
   ansible.builtin.fail:
-    msg: "argocd_admin_password must be set in group_vars before running cluster registration"
+    msg: "argocd_admin_password must be set in host_vars vault before running cluster registration"
   when:
     - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
@@ -188,6 +198,28 @@
   when:
     - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
+
+- name: Create ArgoCD Applications from gitops repo
+  ansible.builtin.command: >
+    argocd app create {{ item.name }}
+    --repo {{ argocd_gitops_repo }}
+    --path {{ item.path }}
+    --revision {{ argocd_gitops_revision }}
+    --dest-server https://{{ _local_tailscale_ip.stdout | trim }}:6443
+    --dest-namespace {{ item.dest_namespace }}
+    --sync-policy automated
+    --auto-prune
+    --self-heal
+    --sync-option CreateNamespace=true
+    --annotation argocd.argoproj.io/sync-wave="{{ item.sync_wave | default('0') }}"
+    --upsert
+  loop: "{{ argocd_apps }}"
+  changed_when: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_register_cluster | default(false)
+    - argocd_gitops_repo != ""
+    - argocd_apps | length > 0
 
 - name: Uninstall ArgoCD
   ansible.builtin.command: helm uninstall argocd -n {{ argocd_namespace }}

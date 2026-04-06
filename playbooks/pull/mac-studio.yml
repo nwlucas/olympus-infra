@@ -1,17 +1,30 @@
 ---
 # Pull-mode playbook for Mac Studio
 # Runs daily at 02:00 via LaunchDaemon as the ansible user.
-# Non-destructive: health checks only, no installs.
-# Full installs/changes are done via push playbooks.
+# Maintains: OrbStack k8s, cloudflared tunnel, ESO bootstrap secret, native services.
+# ArgoCD handles app deployments — this only manages the platform layer.
 
-- name: Mac Studio — Health Checks
+- name: Mac Studio — Drift Correction
   hosts: mac_studio
   gather_facts: true
+
+  roles:
+    # Keep OrbStack k8s running
+    - role: orbstack
+      tags: [orbstack]
+
+    # Keep ESO bootstrap secret present
+    - role: eso-bootstrap
+      tags: [eso-bootstrap]
+
+    # Keep cloudflared tunnel deployed and routes configured
+    - role: cloudflared-k8s
+      tags: [cloudflared-k8s]
 
   tasks:
     - name: Check Ollama is responding
       ansible.builtin.uri:
-        url: "http://localhost:{{ ollama_service_port }}/api/tags"
+        url: "http://localhost:{{ ollama_service_port | default(11434) }}/api/tags"
         method: GET
       register: ollama_check
       failed_when: false
@@ -23,7 +36,7 @@
 
     - name: Check LiteLLM is responding
       ansible.builtin.uri:
-        url: "http://localhost:{{ litellm_port }}/health"
+        url: "http://localhost:{{ litellm_port | default(4000) }}/health"
         method: GET
       register: litellm_check
       failed_when: false

@@ -1,0 +1,6 @@
+---
+orbstack_state: present
+orbstack_k8s_context: orbstack
+orbstack_kubeconfig_path: "~/.kube/config"
+# Timeout in seconds waiting for k8s to be ready
+orbstack_k8s_timeout: 180

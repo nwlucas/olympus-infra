@@ -3,6 +3,13 @@
   ansible.builtin.set_fact:
     _cf_k8s_state: "{{ cloudflared_k8s_state | default('present') }}"
 
+# Build kubectl base command (with optional --context)
+- name: Set kubectl base command
+  ansible.builtin.set_fact:
+    _kubectl: >-
+      kubectl
+      {%- if cloudflared_kubectl_context != '' %} --context {{ cloudflared_kubectl_context }}{% endif %}
+
 # --- TOKEN RESOLUTION: prefer vault var, fall back to file on host ---
 - name: Use vault-provided API token
   ansible.builtin.set_fact:
@@ -16,7 +23,7 @@
   ansible.builtin.stat:
     path: "{{ cloudflared_token_file }}"
   register: cf_token_file
-  become: true
+  become: "{{ cloudflared_kubectl_become }}"
   when:
     - _cf_k8s_state == 'present'
     - cloudflared_api_token == ""
@@ -92,15 +99,15 @@
     - tunnel_list.json.result | length > 0
 
 - name: Create cloudflared namespace
-  ansible.builtin.command: kubectl create namespace {{ cloudflared_namespace }}
+  ansible.builtin.command: "{{ _kubectl }} create namespace {{ cloudflared_namespace }}"
   register: cf_ns_create
   failed_when:
     - cf_ns_create.rc != 0
     - "'already exists' not in cf_ns_create.stderr"
   changed_when: cf_ns_create.rc == 0
-  become: true
+  become: "{{ cloudflared_kubectl_become }}"
   environment:
-    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+    KUBECONFIG: "{{ cloudflared_kubeconfig_path }}"
   when: _cf_k8s_state == 'present'
 
 - name: Get tunnel token
@@ -117,42 +124,42 @@
 - name: Create cloudflared tunnel secret
   ansible.builtin.shell: |
     set -o pipefail
-    kubectl create secret generic cloudflared-creds \
+    {{ _kubectl }} create secret generic cloudflared-creds \
       --from-literal=tunnel-token={{ tunnel_token_resp.json.result }} \
       -n {{ cloudflared_namespace }} \
-      --dry-run=client -o yaml | kubectl apply -f -
+      --dry-run=client -o yaml | {{ _kubectl }} apply -f -
   args:
     executable: /bin/bash
-  become: true
+  become: "{{ cloudflared_kubectl_become }}"
   environment:
-    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+    KUBECONFIG: "{{ cloudflared_kubeconfig_path }}"
   no_log: true
   changed_when: true
   when: _cf_k8s_state == 'present'
 
-- name: Apply cloudflared Deployment
+- name: Render cloudflared Deployment
   ansible.builtin.template:
     src: deployment.yaml.j2
     dest: /tmp/cloudflared-deployment.yaml
     mode: '0600'
   when: _cf_k8s_state == 'present'
 
-- name: Apply Deployment to cluster
-  ansible.builtin.command: kubectl apply -f /tmp/cloudflared-deployment.yaml
-  become: true
+- name: Apply cloudflared Deployment to cluster
+  ansible.builtin.command: "{{ _kubectl }} apply -f /tmp/cloudflared-deployment.yaml"
+  become: "{{ cloudflared_kubectl_become }}"
   environment:
-    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+    KUBECONFIG: "{{ cloudflared_kubeconfig_path }}"
   changed_when: true
   when: _cf_k8s_state == 'present'
 
 - name: Wait for cloudflared rollout to complete
   ansible.builtin.command: >
-    kubectl rollout status deployment/cloudflared
+    {{ _kubectl }} rollout status deployment/cloudflared
     -n {{ cloudflared_namespace }}
     --timeout=120s
-  become: true
+  become: "{{ cloudflared_kubectl_become }}"
   environment:
-    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+    KUBECONFIG: "{{ cloudflared_kubeconfig_path }}"
   changed_when: false
   when: _cf_k8s_state == 'present'
 
@@ -292,10 +299,10 @@
 
 # --- ABSENT ---
 - name: Tear down cloudflared k8s resources
-  ansible.builtin.command: kubectl delete namespace {{ cloudflared_namespace }}
-  become: true
+  ansible.builtin.command: "{{ _kubectl }} delete namespace {{ cloudflared_namespace }}"
+  become: "{{ cloudflared_kubectl_become }}"
   environment:
-    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+    KUBECONFIG: "{{ cloudflared_kubeconfig_path }}"
   failed_when: false
   changed_when: true
   when: _cf_k8s_state == 'absent'
