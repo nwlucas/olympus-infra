@@ -20,18 +20,24 @@
   failed_when: false
   when: litellm_state == "absent"
 
-- name: Fetch LiteLLM Anthropic API key from 1Password
+- name: Fetch LiteLLM Anthropic API key from 1Password Connect
   ansible.builtin.command: /opt/homebrew/bin/op read "op://Dev/litellm/anthropic-api-key"
   register: _litellm_anthropic_api_key
   no_log: true
   changed_when: false
+  environment:
+    OP_CONNECT_HOST: "{{ onepassword_connect_host }}"
+    OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token }}"
   when: litellm_state == "present"
 
-- name: Fetch LiteLLM master key from 1Password
+- name: Fetch LiteLLM master key from 1Password Connect
   ansible.builtin.command: /opt/homebrew/bin/op read "op://Dev/litellm/master-key"
   register: _litellm_master_key
   no_log: true
   changed_when: false
+  environment:
+    OP_CONNECT_HOST: "{{ onepassword_connect_host }}"
+    OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token }}"
   when: litellm_state == "present"
 
 - name: Set LiteLLM key facts

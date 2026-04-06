@@ -168,11 +168,14 @@
     - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
 
-- name: Fetch ArgoCD admin password from 1Password
+- name: Fetch ArgoCD admin password from 1Password Connect
   ansible.builtin.command: /opt/homebrew/bin/op read "op://Dev/olympus-sdk-argocd/password"
   register: _argocd_admin_password
   no_log: true
   changed_when: false
+  environment:
+    OP_CONNECT_HOST: "{{ onepassword_connect_host }}"
+    OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token }}"
   when:
     - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
