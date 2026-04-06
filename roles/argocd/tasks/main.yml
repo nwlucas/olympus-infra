@@ -79,6 +79,26 @@
     msg: "ArgoCD initial admin password: {{ argocd_initial_password.stdout }}"
   when: _argocd_state == 'present'
 
+# --- TRAEFIK INGRESSROUTE ---
+- name: Render ArgoCD Traefik IngressRoute
+  ansible.builtin.template:
+    src: traefik-ingressroute.yaml.j2
+    dest: /tmp/argocd-ingressroute.yaml
+    mode: '0600'
+  when:
+    - _argocd_state == 'present'
+    - argocd_hostname != ""
+
+- name: Apply ArgoCD Traefik IngressRoute
+  ansible.builtin.command: kubectl apply -f /tmp/argocd-ingressroute.yaml
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_hostname != ""
+
 # --- CLUSTER REGISTRATION ---
 # Runs when argocd_register_cluster: true regardless of argocd_state.
 # Use case: ai-hub registers its OrbStack cluster with management-hub ArgoCD

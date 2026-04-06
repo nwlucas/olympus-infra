@@ -82,6 +82,26 @@
   when: _1pw_state == 'present'
 
 
+# --- TRAEFIK INGRESSROUTE ---
+- name: Render 1Password Connect Traefik IngressRoute
+  ansible.builtin.template:
+    src: traefik-ingressroute.yaml.j2
+    dest: /tmp/onepassword-connect-ingressroute.yaml
+    mode: '0600'
+  when:
+    - _1pw_state == 'present'
+    - onepassword_connect_hostname != ""
+
+- name: Apply 1Password Connect Traefik IngressRoute
+  ansible.builtin.command: kubectl apply -f /tmp/onepassword-connect-ingressroute.yaml
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: true
+  when:
+    - _1pw_state == 'present'
+    - onepassword_connect_hostname != ""
+
 - name: Uninstall 1Password Connect
   ansible.builtin.command: helm uninstall connect -n {{ onepassword_connect_namespace }}
   become: true

@@ -5,3 +5,7 @@ onepassword_connect_chart_version: "1.15.0"
 onepassword_connect_credentials_file: "/etc/olympus/1password-credentials.json"
 onepassword_connect_token_file: "/etc/olympus/onepassword-connect-token"
 onepassword_connect_port: 8080
+# Public hostname for Traefik IngressRoute (set in host_vars to enable)
+onepassword_connect_hostname: ""
+# k8s service name as created by the Helm chart (release: connect, chart: connect)
+onepassword_connect_service_name: "onepassword-connect"

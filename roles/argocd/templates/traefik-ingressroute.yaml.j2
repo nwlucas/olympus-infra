@@ -1,0 +1,20 @@
+---
+# ArgoCD web UI + gRPC — single IngressRoute with h2c backend scheme.
+# ArgoCD runs in insecure mode (server.insecure=true), serving h2c on port 80.
+# Traefik uses scheme: h2c to speak HTTP/2 cleartext to the backend,
+# enabling both web UI (HTTP/1.1 from browser) and gRPC CLI traffic.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: argocd-server
+  namespace: {{ argocd_namespace }}
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`{{ argocd_hostname }}`)
+      kind: Rule
+      services:
+        - name: argocd-server
+          port: 80
+          scheme: h2c

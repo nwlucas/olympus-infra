@@ -23,3 +23,5 @@ argocd_gitops_revision: main
 # List of ArgoCD Applications to create after cluster registration
 # Each: { name, path, dest_namespace, sync_wave }
 argocd_apps: []
+# Public hostname for Traefik IngressRoute (set in host_vars to enable)
+argocd_hostname: ""

@@ -1,34 +1,30 @@
 ---
 # Pull-mode playbook for management-hub
 # Runs daily at 02:00 via crontab as the ansible user.
-# Non-destructive: health checks only, no installs.
-# Full installs/changes are done via push playbooks.
+# Re-applies all idempotent foundation roles to correct drift.
+# IngressRoutes, cloudflared config, and Helm state are all reconciled here.
 
-- name: Management Hub — Health Checks
+- name: Management Hub — Drift Correction
   hosts: management-hub
   gather_facts: true
 
-  tasks:
-    - name: Check k3s service is running
-      ansible.builtin.systemd:
-        name: k3s
-      register: k3s_status
-      failed_when: false
-      changed_when: false
+  pre_tasks:
+    - name: Gather minimal facts
+      ansible.builtin.setup:
+        gather_subset: [min]
 
-    - name: Report k3s status
-      ansible.builtin.debug:
-        msg: "k3s service state: {{ k3s_status.status.ActiveState | default('unknown') }}"
+  roles:
+    - role: traefik
+      tags: [traefik]
 
-    - name: Check Tailscale status
-      ansible.builtin.command: tailscale status --json
-      register: ts_status
-      failed_when: false
-      changed_when: false
+    - role: 1password-connect
+      tags: [1password-connect]
 
-    - name: Report Tailscale status
-      ansible.builtin.debug:
-        msg: >
-          Tailscale BackendState:
-          {{ (ts_status.stdout | from_json).BackendState | default('unknown') }}
-      when: ts_status.rc == 0
+    - role: external-secrets
+      tags: [external-secrets]
+
+    - role: argocd
+      tags: [argocd]
+
+    - role: cloudflared-k8s
+      tags: [cloudflared-k8s]
