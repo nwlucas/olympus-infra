@@ -1,8 +1,16 @@
 ---
-- name: Install Tailscale via Homebrew
+- name: Check if tailscale binary is already available
+  ansible.builtin.command: which tailscale
+  register: tailscale_which
+  failed_when: false
+  changed_when: false
+
+- name: Install Tailscale via Homebrew (formula)
   community.general.homebrew:
     name: tailscale
     state: "{{ 'present' if tailscale_state == 'present' else 'absent' }}"
+  when:
+    - tailscale_which.rc != 0 or tailscale_state == "absent"
 
 - name: Stop Tailscale service (macOS, absent)
   ansible.builtin.command: /opt/homebrew/bin/brew services stop tailscale
@@ -26,7 +34,7 @@
   when: tailscale_state == "present"
 
 - name: Check Tailscale backend state
-  ansible.builtin.command: /opt/homebrew/bin/tailscale status --json
+  ansible.builtin.command: tailscale status --json
   register: ts_status
   failed_when: false
   changed_when: false
@@ -85,7 +93,7 @@
 
 - name: Join Tailscale network with ephemeral key
   ansible.builtin.command: >
-    /opt/homebrew/bin/tailscale up
+    tailscale up
     --authkey={{ ts_auth_key.json.key }}
     --hostname={{ tailscale_hostname }}
     --accept-routes={{ tailscale_accept_routes | lower }}
@@ -105,7 +113,7 @@
     - tailscale_is_running
 
 - name: Tailscale disconnect (absent)
-  ansible.builtin.command: /opt/homebrew/bin/tailscale down
+  ansible.builtin.command: tailscale down
   failed_when: false
   changed_when: true
   when: tailscale_state == "absent"
