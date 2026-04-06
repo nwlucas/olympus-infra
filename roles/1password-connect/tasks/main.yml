@@ -16,6 +16,16 @@
     - _1pw_state == 'present'
     - not creds_file.stat.exists or creds_file.stat.size == 0
 
+- name: Install helm (Linux)
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    creates: /usr/local/bin/helm
+    executable: /bin/bash
+  become: true
+  when: _1pw_state == 'present'
+
 - name: Add 1Password Helm repo
   ansible.builtin.command: >
     helm repo add 1password
