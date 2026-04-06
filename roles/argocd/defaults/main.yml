@@ -1,8 +1,14 @@
 ---
 argocd_state: present
+# Kubeconfig used when installing/uninstalling ArgoCD itself (management-hub k3s)
+k3s_kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
 argocd_namespace: argocd
 argocd_chart_version: "7.7.0"   # Helm chart version for ArgoCD 2.13.x
 argocd_server: ""               # external hostname (set in group_vars)
+argocd_nodeport: 30080          # NodePort for argocd-server HTTP (Tailscale-accessible)
+# URL used for argocd CLI login during cluster registration.
+# Defaults to management Tailscale IP + NodePort; override in host_vars if needed.
+argocd_login_server: "{{ management_tailscale_ip }}:{{ argocd_nodeport }}"
 # Cluster registration (set to true when running on ai-hub)
 argocd_register_cluster: false
 argocd_cluster_name: ""

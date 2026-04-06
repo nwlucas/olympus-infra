@@ -1,4 +1,13 @@
 ---
+# OrbStack Homebrew cask installs binaries at /opt/homebrew/bin/orbctl (symlink into app bundle).
+# kubectl is bundled at ~/.orbstack/bin/kubectl and the kubeconfig at ~/.orbstack/k8s/config.yml.
+#
+# OrbStack requires a GUI/user session to launch. If running headless, the user must:
+#   1. Enable auto-login (System Settings → Users & Groups → Automatic Login)
+#   2. Open OrbStack once to accept EULA and set it up as a login item
+#   3. Enable Kubernetes: orbctl start k8s
+# After that first login, OrbStack runs as a user login item on every boot.
+
 - name: Install OrbStack via Homebrew
   community.general.homebrew:
     name: orbstack
@@ -6,46 +15,49 @@
   become: false
   when: orbstack_state == 'present'
 
-# OrbStack auto-starts services when any CLI command is issued (headless mode).
-# Ensure orb binary is on PATH for non-interactive Ansible sessions.
-- name: Ensure OrbStack CLI is on PATH (non-interactive shell)
-  ansible.builtin.lineinfile:
-    path: "~/.zprofile"
-    line: 'export PATH="$PATH:/Applications/OrbStack.app/Contents/MacOS"'
-    create: true
-    mode: '0644'
-  become: false
-  when: orbstack_state == 'present'
-
-- name: Check if OrbStack Kubernetes context already exists
-  ansible.builtin.command: /Applications/OrbStack.app/Contents/MacOS/orbctl get k8s
-  register: _orb_k8s_ctx
+- name: Check if OrbStack daemon is running
+  ansible.builtin.command: pgrep -x OrbStack
+  register: _orb_running
   failed_when: false
   changed_when: false
   become: false
   when: orbstack_state == 'present'
 
-- name: Start OrbStack Kubernetes (auto-starts OrbStack daemon if not running)
-  ansible.builtin.command: /Applications/OrbStack.app/Contents/MacOS/orbctl start k8s
+- name: Fail with clear message if OrbStack is not running
+  ansible.builtin.fail:
+    msg: |
+      OrbStack is not running on {{ inventory_hostname }}.
+      OrbStack requires a GUI login session to start. Please:
+        1. Enable auto-login (System Settings → Users & Groups → Automatic Login)
+        2. Connect via screen sharing or physically log in to the machine
+        3. Open /Applications/OrbStack.app once to accept EULA and set up login item
+        4. Enable Kubernetes: orbctl start k8s
+        5. Re-run this playbook
+  when:
+    - orbstack_state == 'present'
+    - _orb_running.rc != 0
+
+- name: Enable OrbStack Kubernetes
+  ansible.builtin.command: /opt/homebrew/bin/orbctl start k8s
   register: _orb_k8s_start
-  changed_when: true
+  changed_when: "'already' not in (_orb_k8s_start.stdout | default(''))"
   failed_when: false
   become: false
   when:
     - orbstack_state == 'present'
-    - _orb_k8s_ctx.rc != 0
+    - _orb_running.rc == 0
 
 - name: Wait for OrbStack k8s API to be ready
-  ansible.builtin.command: >
-    /Applications/OrbStack.app/Contents/MacOS/orbctl kubectl
-    --context {{ orbstack_k8s_context }} get nodes
+  ansible.builtin.command: kubectl --kubeconfig {{ ansible_env.HOME }}/.kube/config --context {{ orbstack_k8s_context }} get nodes
   register: _orb_k8s_ready
   until: _orb_k8s_ready.rc == 0
   retries: 36
   delay: 5
   changed_when: false
   become: false
-  when: orbstack_state == 'present'
+  when:
+    - orbstack_state == 'present'
+    - _orb_running.rc == 0
 
 - name: Remove OrbStack
   community.general.homebrew:
@@ -53,3 +65,65 @@
     state: absent
   become: false
   when: orbstack_state == 'absent'
+
+# --- K8s API proxy (socat) ---
+# OrbStack binds the k8s API only to 127.0.0.1. This proxy forwards
+# 0.0.0.0:{{ orbstack_k8s_api_proxy_port }} → 127.0.0.1:{{ orbstack_k8s_api_local_port }}
+# so that ArgoCD on management-hub can reach this cluster over Tailscale.
+
+- name: Install socat (for k8s API proxy)
+  community.general.homebrew:
+    name: socat
+    state: present
+  become: false
+  when:
+    - orbstack_state == 'present'
+    - orbstack_k8s_api_proxy_state == 'present'
+
+- name: Deploy k8s API proxy LaunchDaemon
+  ansible.builtin.template:
+    src: com.orbstack.k8s-api-proxy.plist.j2
+    dest: /Library/LaunchDaemons/com.orbstack.k8s-api-proxy.plist
+    owner: root
+    group: wheel
+    mode: '0644'
+  become: true
+  register: _k8s_proxy_plist
+  when:
+    - orbstack_state == 'present'
+    - orbstack_k8s_api_proxy_state == 'present'
+
+- name: Bootout k8s API proxy LaunchDaemon (if running)
+  ansible.builtin.command: launchctl bootout system/com.orbstack.k8s-api-proxy
+  failed_when: false
+  changed_when: true
+  become: true
+  when:
+    - orbstack_state == 'present'
+    - orbstack_k8s_api_proxy_state == 'present'
+    - _k8s_proxy_plist.changed
+
+- name: Bootstrap k8s API proxy LaunchDaemon
+  ansible.builtin.command: launchctl bootstrap system /Library/LaunchDaemons/com.orbstack.k8s-api-proxy.plist
+  changed_when: true
+  become: true
+  when:
+    - orbstack_state == 'present'
+    - orbstack_k8s_api_proxy_state == 'present'
+    - _k8s_proxy_plist.changed
+
+- name: Remove k8s API proxy LaunchDaemon
+  ansible.builtin.command: launchctl bootout system/com.orbstack.k8s-api-proxy
+  failed_when: false
+  changed_when: true
+  become: true
+  when:
+    - orbstack_k8s_api_proxy_state == 'absent'
+
+- name: Remove k8s API proxy plist
+  ansible.builtin.file:
+    path: /Library/LaunchDaemons/com.orbstack.k8s-api-proxy.plist
+    state: absent
+  become: true
+  when:
+    - orbstack_k8s_api_proxy_state == 'absent'

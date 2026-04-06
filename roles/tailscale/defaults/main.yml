@@ -6,3 +6,7 @@ tailscale_advertise_exit_node: false
 # OAuth client credentials (from 1Password item: ansible-tailscale-oauth)
 tailscale_oauth_client_id: ""
 tailscale_oauth_client_secret: ""
+# Tags required by tailnet ACL when creating auth keys via OAuth.
+# Must include at least one tag if tailnet policy enforces "tailnet-owned auth key must have tags set".
+tailscale_tags:
+  - "tag:server"

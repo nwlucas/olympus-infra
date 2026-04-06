@@ -34,7 +34,8 @@
     helm upgrade --install argocd argo/argo-cd
     --namespace {{ argocd_namespace }}
     --version {{ argocd_chart_version }}
-    --set server.service.type=ClusterIP
+    --set server.service.type=NodePort
+    --set server.service.nodePortHttp={{ argocd_nodeport | default(30080) }}
     --set configs.params."server\.insecure"=true
     --wait --timeout 5m
   become: true
@@ -78,13 +79,17 @@
     msg: "ArgoCD initial admin password: {{ argocd_initial_password.stdout }}"
   when: _argocd_state == 'present'
 
-# --- CLUSTER REGISTRATION (runs when argocd_register_cluster: true, e.g. on ai-hub) ---
+# --- CLUSTER REGISTRATION ---
+# Runs when argocd_register_cluster: true regardless of argocd_state.
+# Use case: ai-hub registers its OrbStack cluster with management-hub ArgoCD
+# but does NOT install ArgoCD itself (argocd_state: absent).
+
 - name: Install argocd CLI (macOS)
   community.general.homebrew:
     name: argocd
     state: present
+  become: false
   when:
-    - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
     - ansible_system == 'Darwin'
 
@@ -102,7 +107,6 @@
   register: _ts_mgmt_oauth
   no_log: true
   when:
-    - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
     - tailscale_oauth_client_id | default('') != ''
     - tailscale_oauth_client_secret | default('') != ''
@@ -117,7 +121,6 @@
   register: _ts_devices
   no_log: true
   when:
-    - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
     - _ts_mgmt_oauth is defined
     - _ts_mgmt_oauth.status | default(0) == 200
@@ -133,7 +136,6 @@
          | first }}
   no_log: true
   when:
-    - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
     - _ts_devices is defined
     - _ts_devices.status | default(0) == 200
@@ -145,28 +147,31 @@
       Could not resolve Tailscale IP for host '{{ argocd_management_hostname }}'.
       Check that the device is online and that tailscale_oauth_client_id/secret are set.
   when:
-    - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
     - management_tailscale_ip | default('') == ''
 
-- name: Get local Tailscale IP (for kubeconfig server URL)
-  ansible.builtin.command: tailscale ip -4
+- name: Get local Tailscale IP (for cluster API server URL)
+  ansible.builtin.command: /opt/homebrew/bin/tailscale ip -4
   register: _local_tailscale_ip
   changed_when: false
   become: false
-  when:
-    - _argocd_state == 'present'
-    - argocd_register_cluster | default(false)
+  when: argocd_register_cluster | default(false)
 
-- name: Patch kubeconfig server URL to local Tailscale IP
-  ansible.builtin.command: >
-    kubectl config set-cluster {{ argocd_cluster_context }}
-    --server=https://{{ _local_tailscale_ip.stdout | trim }}:6443
-  changed_when: true
+- name: Create temp kubeconfig with proxy server URL for ArgoCD cluster registration
+  ansible.builtin.shell: |
+    set -o pipefail
+    KUBECONFIG={{ ansible_env.HOME }}/.kube/config \
+      kubectl config view --raw --minify --context {{ argocd_cluster_context }} \
+        > /tmp/argocd-cluster-reg-kubeconfig.yml
+    KUBECONFIG=/tmp/argocd-cluster-reg-kubeconfig.yml \
+      kubectl config set-cluster {{ argocd_cluster_context }} \
+        --server=https://{{ _local_tailscale_ip.stdout | trim }}:{{ argocd_k8s_proxy_port | default(6443) }} \
+        --insecure-skip-tls-verify=true
+  args:
+    executable: /bin/bash
+  changed_when: false
   become: false
-  when:
-    - _argocd_state == 'present'
-    - argocd_register_cluster | default(false)
+  when: argocd_register_cluster | default(false)
 
 - name: Fetch ArgoCD admin password from 1Password Connect
   ansible.builtin.command: /opt/homebrew/bin/op read "op://Dev/olympus-sdk-argocd/password"
@@ -176,55 +181,63 @@
   environment:
     OP_CONNECT_HOST: "{{ onepassword_connect_host }}"
     OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token }}"
-  when:
-    - _argocd_state == 'present'
-    - argocd_register_cluster | default(false)
+  when: argocd_register_cluster | default(false)
 
 - name: Log in to ArgoCD CLI
   ansible.builtin.command: >
-    argocd login {{ management_tailscale_ip }}
+    /opt/homebrew/bin/argocd login {{ argocd_login_server }}
     --username admin
     --password {{ _argocd_admin_password.stdout | trim }}
-    --insecure
-    --grpc-web
-  no_log: true
+    --plaintext
+  no_log: false
   changed_when: true
-  when:
-    - _argocd_state == 'present'
-    - argocd_register_cluster | default(false)
+  when: argocd_register_cluster | default(false)
 
 - name: Register cluster in ArgoCD
   ansible.builtin.command: >
-    argocd cluster add {{ argocd_cluster_context }}
+    /opt/homebrew/bin/argocd cluster add {{ argocd_cluster_context }}
     --name {{ argocd_cluster_name }}
+    --kubeconfig /tmp/argocd-cluster-reg-kubeconfig.yml
+    --insecure
     --yes
   changed_when: true
-  when:
-    - _argocd_state == 'present'
-    - argocd_register_cluster | default(false)
+  when: argocd_register_cluster | default(false)
 
 - name: Create ArgoCD Applications from gitops repo
   ansible.builtin.command: >
-    argocd app create {{ item.name }}
+    /opt/homebrew/bin/argocd app create {{ item.name }}
     --repo {{ argocd_gitops_repo }}
     --path {{ item.path }}
     --revision {{ argocd_gitops_revision }}
-    --dest-server https://{{ _local_tailscale_ip.stdout | trim }}:6443
+    --dest-server https://{{ _local_tailscale_ip.stdout | trim }}:{{ argocd_k8s_proxy_port | default(6443) }}
     --dest-namespace {{ item.dest_namespace }}
     --sync-policy automated
     --auto-prune
     --self-heal
     --sync-option CreateNamespace=true
-    --annotation argocd.argoproj.io/sync-wave="{{ item.sync_wave | default('0') }}"
+    --annotations "argocd.argoproj.io/sync-wave={{ item.sync_wave | default('0') }}"
     --upsert
   loop: "{{ argocd_apps }}"
+  register: _argocd_app_create
   changed_when: true
+  failed_when:
+    - _argocd_app_create.rc != 0
+    - "'app path does not exist' not in (_argocd_app_create.stderr | default(''))"
   when:
-    - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
     - argocd_gitops_repo != ""
     - argocd_apps | length > 0
 
+- name: Warn about missing GitOps paths
+  ansible.builtin.debug:
+    msg: "WARNING: {{ item.item.name }} path '{{ item.item.path }}' not yet in gitops repo — create manifests to enable sync"
+  loop: "{{ _argocd_app_create.results | default([]) }}"
+  when:
+    - argocd_register_cluster | default(false)
+    - item.rc | default(0) != 0
+    - "'app path does not exist' in (item.stderr | default(''))"
+
+# --- UNINSTALL (only when argocd_state: absent AND not a registration-only host) ---
 - name: Uninstall ArgoCD
   ansible.builtin.command: helm uninstall argocd -n {{ argocd_namespace }}
   become: true
@@ -232,4 +245,6 @@
     KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   failed_when: false
   changed_when: true
-  when: _argocd_state == 'absent'
+  when:
+    - _argocd_state == 'absent'
+    - not (argocd_register_cluster | default(false))

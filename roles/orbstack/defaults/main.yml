@@ -4,3 +4,8 @@ orbstack_k8s_context: orbstack
 orbstack_kubeconfig_path: "~/.kube/config"
 # Timeout in seconds waiting for k8s to be ready
 orbstack_k8s_timeout: 180
+# k8s API proxy: forwards 0.0.0.0:proxy_port → 127.0.0.1:local_port
+# Allows ArgoCD on management-hub to reach this cluster over Tailscale
+orbstack_k8s_api_proxy_state: absent    # set to 'present' in host_vars to enable
+orbstack_k8s_api_proxy_port: 6443       # port to listen on (all interfaces)
+orbstack_k8s_api_local_port: 26443      # OrbStack k8s API local port

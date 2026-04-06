@@ -5,7 +5,7 @@
 # ArgoCD handles app deployments — this only manages the platform layer.
 
 - name: AI Hub — Drift Correction
-  hosts: ai_hub
+  hosts: ai-hub
   gather_facts: true
 
   roles:

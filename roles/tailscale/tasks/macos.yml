@@ -96,7 +96,7 @@
             reusable: false
             ephemeral: true
             preauthorized: true
-            tags: []
+            tags: "{{ tailscale_tags }}"
       expirySeconds: 300
     status_code: 200
   register: ts_auth_key
@@ -109,7 +109,7 @@
 
 - name: Join Tailscale network with ephemeral key
   ansible.builtin.command: >
-    tailscale up
+    /opt/homebrew/bin/tailscale up
     --authkey={{ ts_auth_key.json.key }}
     --hostname={{ tailscale_hostname }}
     --accept-routes={{ tailscale_accept_routes | lower }}
