@@ -7,6 +7,7 @@
   ansible.builtin.stat:
     path: "{{ onepassword_connect_credentials_file }}"
   register: creds_file
+  become: true
   when: _1pw_state == 'present'
 
 - name: Skip if credentials file missing
