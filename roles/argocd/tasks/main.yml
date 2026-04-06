@@ -169,7 +169,7 @@
     - argocd_register_cluster | default(false)
 
 - name: Fetch ArgoCD admin password from 1Password
-  ansible.builtin.command: op read "op://Dev/olympus-sdk-argocd/password"
+  ansible.builtin.command: /opt/homebrew/bin/op read "op://Dev/olympus-sdk-argocd/password"
   register: _argocd_admin_password
   no_log: true
   changed_when: false

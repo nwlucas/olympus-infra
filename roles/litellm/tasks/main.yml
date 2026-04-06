@@ -21,14 +21,14 @@
   when: litellm_state == "absent"
 
 - name: Fetch LiteLLM Anthropic API key from 1Password
-  ansible.builtin.command: op read "op://Dev/litellm/anthropic-api-key"
+  ansible.builtin.command: /opt/homebrew/bin/op read "op://Dev/litellm/anthropic-api-key"
   register: _litellm_anthropic_api_key
   no_log: true
   changed_when: false
   when: litellm_state == "present"
 
 - name: Fetch LiteLLM master key from 1Password
-  ansible.builtin.command: op read "op://Dev/litellm/master-key"
+  ansible.builtin.command: /opt/homebrew/bin/op read "op://Dev/litellm/master-key"
   register: _litellm_master_key
   no_log: true
   changed_when: false
