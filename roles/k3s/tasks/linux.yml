@@ -3,12 +3,20 @@
 - name: Install k3s
   ansible.builtin.shell: |
     set -o pipefail
-    curl -sfL https://get.k3s.io | sh -
+    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--write-kubeconfig-mode=0644" sh -
   args:
     creates: /usr/local/bin/k3s
     executable: /bin/bash
   become: true
   when: _k3s_state == 'present'
+
+- name: Ensure kubeconfig is world-readable
+  ansible.builtin.file:
+    path: "{{ k3s_kubeconfig_path }}"
+    mode: "0644"
+  become: true
+  when: _k3s_state == 'present'
+  failed_when: false
 
 - name: Enable and start k3s service
   ansible.builtin.systemd:
