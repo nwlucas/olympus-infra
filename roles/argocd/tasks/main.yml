@@ -79,6 +79,34 @@
     msg: "ArgoCD initial admin password: {{ argocd_initial_password.stdout }}"
   when: _argocd_state == 'present'
 
+- name: Store ArgoCD admin password in 1Password
+  ansible.builtin.shell: |
+    set -o pipefail
+    if /opt/homebrew/bin/op item get "{{ argocd_1password_item | default('olympus-sdk-argocd') }}" --vault={{ argocd_kubeconfig_1password_vault | default('Dev') }} >/dev/null 2>&1; then
+      /opt/homebrew/bin/op item edit "{{ argocd_1password_item | default('olympus-sdk-argocd') }}" \
+        --vault={{ argocd_kubeconfig_1password_vault | default('Dev') }} \
+        "password[password]={{ argocd_initial_password.stdout | trim }}"
+    else
+      /opt/homebrew/bin/op item create \
+        --category=Login \
+        --title="{{ argocd_1password_item | default('olympus-sdk-argocd') }}" \
+        --vault={{ argocd_kubeconfig_1password_vault | default('Dev') }} \
+        "username[username]=admin" \
+        "password[password]={{ argocd_initial_password.stdout | trim }}"
+    fi
+  args:
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  no_log: true
+  changed_when: true
+  ignore_errors: true
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - _argocd_state == 'present'
+    - argocd_initial_password.stdout | default('') != ''
+
 # --- TRAEFIK INGRESSROUTE ---
 - name: Render ArgoCD Traefik IngressRoute
   ansible.builtin.template:
@@ -152,6 +180,9 @@
   become: false
   no_log: true
   changed_when: true
+  ignore_errors: true
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
   when:
     - _argocd_state == 'present'
     - argocd_kubeconfig_1password_item != ""
@@ -169,6 +200,9 @@
   become: false
   no_log: true
   changed_when: true
+  ignore_errors: true
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
   when:
     - _argocd_state == 'present'
     - argocd_kubeconfig_1password_item != ""
