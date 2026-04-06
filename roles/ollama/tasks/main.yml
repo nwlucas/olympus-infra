@@ -4,6 +4,16 @@
     name: ollama
     state: "{{ 'present' if ollama_state == 'present' else 'absent' }}"
 
+- name: Deploy Ollama wrapper script
+  ansible.builtin.template:
+    src: ollama-serve.j2
+    dest: /usr/local/bin/ollama-serve
+    owner: root
+    group: wheel
+    mode: "0755"
+  become: true
+  when: ollama_state == "present"
+
 - name: Deploy Ollama LaunchDaemon plist
   ansible.builtin.template:
     src: ollama.plist.j2
@@ -15,26 +25,25 @@
   when: ollama_state == "present"
   register: ollama_plist
 
+- name: Bootout existing Ollama LaunchDaemon (if running)
+  ansible.builtin.command: launchctl bootout system/homebrew.mxcl.ollama
+  become: true
+  failed_when: false
+  changed_when: true
+  when:
+    - ollama_state == "present"
+    - ollama_plist is changed
+
 - name: Bootstrap Ollama LaunchDaemon
   ansible.builtin.command: launchctl bootstrap system /Library/LaunchDaemons/homebrew.mxcl.ollama.plist
   become: true
-  failed_when: false
   changed_when: true
   when:
     - ollama_state == "present"
     - ollama_plist is changed
 
-- name: Kickstart Ollama (restart if plist changed)
-  ansible.builtin.command: launchctl kickstart -k system/homebrew.mxcl.ollama
-  become: true
-  failed_when: false
-  changed_when: true
-  when:
-    - ollama_state == "present"
-    - ollama_plist is changed
-
-- name: Ensure Ollama LaunchDaemon is loaded and running
-  ansible.builtin.command: launchctl kickstart -k system/homebrew.mxcl.ollama
+- name: Ensure Ollama LaunchDaemon is running (kickstart)
+  ansible.builtin.command: launchctl kickstart system/homebrew.mxcl.ollama
   become: true
   failed_when: false
   changed_when: false
@@ -49,11 +58,14 @@
   changed_when: true
   when: ollama_state == "absent"
 
-- name: Remove Ollama LaunchDaemon plist
+- name: Remove Ollama LaunchDaemon plist and wrapper
   ansible.builtin.file:
-    path: /Library/LaunchDaemons/homebrew.mxcl.ollama.plist
+    path: "{{ item }}"
     state: absent
   become: true
+  loop:
+    - /Library/LaunchDaemons/homebrew.mxcl.ollama.plist
+    - /usr/local/bin/ollama-serve
   when: ollama_state == "absent"
 
 - name: Wait for Ollama to be ready

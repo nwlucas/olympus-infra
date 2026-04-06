@@ -1,0 +1,3 @@
+#!/bin/bash
+# Wrapper to run Ollama as {{ ansible_user }} from a root LaunchDaemon
+exec sudo -Hu {{ ansible_user }} /opt/homebrew/bin/ollama serve

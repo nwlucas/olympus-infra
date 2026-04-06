@@ -6,11 +6,9 @@
     <string>homebrew.mxcl.ollama</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/opt/homebrew/bin/ollama</string>
-        <string>serve</string>
+        <string>/bin/bash</string>
+        <string>/usr/local/bin/ollama-serve</string>
     </array>
-    <key>UserName</key>
-    <string>{{ ansible_user }}</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
@@ -19,12 +17,5 @@
     <string>/var/log/ollama.log</string>
     <key>StandardErrorPath</key>
     <string>/var/log/ollama.err</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>HOME</key>
-        <string>{{ ansible_env.HOME }}</string>
-        <key>PATH</key>
-        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-    </dict>
 </dict>
 </plist>
