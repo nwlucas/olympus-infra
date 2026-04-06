@@ -1,11 +1,11 @@
 ---
-# Pull-mode playbook for Mac Studio
+# Pull-mode playbook for AI Hub
 # Runs daily at 02:00 via LaunchDaemon as the ansible user.
 # Maintains: OrbStack k8s, cloudflared tunnel, ESO bootstrap secret, native services.
 # ArgoCD handles app deployments — this only manages the platform layer.
 
-- name: Mac Studio — Drift Correction
-  hosts: mac_studio
+- name: AI Hub — Drift Correction
+  hosts: ai_hub
   gather_facts: true
 
   roles:

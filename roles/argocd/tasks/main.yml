@@ -78,7 +78,7 @@
     msg: "ArgoCD initial admin password: {{ argocd_initial_password.stdout }}"
   when: _argocd_state == 'present'
 
-# --- CLUSTER REGISTRATION (runs when argocd_register_cluster: true, e.g. on mac-studio) ---
+# --- CLUSTER REGISTRATION (runs when argocd_register_cluster: true, e.g. on ai-hub) ---
 - name: Install argocd CLI (macOS)
   community.general.homebrew:
     name: argocd
@@ -168,19 +168,20 @@
     - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
 
-- name: Fail if argocd_admin_password not set for cluster registration
-  ansible.builtin.fail:
-    msg: "argocd_admin_password must be set in host_vars vault before running cluster registration"
+- name: Fetch ArgoCD admin password from 1Password
+  ansible.builtin.command: op read "op://Dev/olympus-sdk-argocd/password"
+  register: _argocd_admin_password
+  no_log: true
+  changed_when: false
   when:
     - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
-    - argocd_admin_password == ""
 
 - name: Log in to ArgoCD CLI
   ansible.builtin.command: >
     argocd login {{ management_tailscale_ip }}
     --username admin
-    --password {{ argocd_admin_password }}
+    --password {{ _argocd_admin_password.stdout | trim }}
     --insecure
     --grpc-web
   no_log: true

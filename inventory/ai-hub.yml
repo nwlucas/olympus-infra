@@ -1,7 +1,7 @@
 ---
 all:
   hosts:
-    mac_studio:
+    ai_hub:
       ansible_host: 127.0.0.1  # ansible-pull runs locally on the host
       ansible_connection: local
   vars:

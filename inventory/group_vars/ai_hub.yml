@@ -1,5 +1,5 @@
 ---
-# Mac Studio vars for ansible-pull (pull-mode, health checks only)
+# AI Hub vars for ansible-pull (pull-mode, health checks only)
 ansible_user: ansible
 
 # Ollama
@@ -17,15 +17,15 @@ litellm_config_dest: /opt/litellm/config.yaml
 
 # Tailscale
 tailscale_state: present
-tailscale_hostname: mac-studio
+tailscale_hostname: ai-hub
 
-# Cloudflared (binary only; tunnel runs in Colima k3s)
+# Cloudflared (binary only; tunnel runs in OrbStack k8s)
 cloudflared_state: present
 
 # Colima k3s
 colima_state: present
 colima_profile: olympus
-colima_k3s_tls_san: ""  # Set to mac_studio_tailscale_ip after Phase 2→3 handoff
+colima_k3s_tls_san: ""  # Set to ai_hub_tailscale_ip after Phase 2→3 handoff
 
 # Vibe Kanban (managed by ArgoCD)
 vibe_kanban_state: present

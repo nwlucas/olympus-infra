@@ -3,17 +3,15 @@ argocd_state: present
 argocd_namespace: argocd
 argocd_chart_version: "7.7.0"   # Helm chart version for ArgoCD 2.13.x
 argocd_server: ""               # external hostname (set in group_vars)
-# Cluster registration (set to true when running on mac-studio)
+# Cluster registration (set to true when running on ai-hub)
 argocd_register_cluster: false
 argocd_cluster_name: ""
 argocd_cluster_context: ""
 # Hostname of the management device as registered in Tailscale (used for dynamic IP lookup)
-argocd_management_hostname: "management"
+argocd_management_hostname: "management-hub"
 # management_tailscale_ip is resolved dynamically via Tailscale API during cluster registration
 management_tailscale_ip: ""
-# ArgoCD admin password — set in host_vars vault after management bootstrap prints it
-argocd_admin_password: ""
-# GitOps repo for App of Apps (set in host_vars for mac-studio)
+# GitOps repo for App of Apps (set in host_vars for ai-hub)
 argocd_gitops_repo: ""
 argocd_gitops_revision: main
 # List of ArgoCD Applications to create after cluster registration
