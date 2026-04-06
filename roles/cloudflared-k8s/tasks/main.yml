@@ -240,19 +240,15 @@
     - (_bootstrap_cname_check.json.result | default([]) | length) > 0
     - _bootstrap_cname_check.json.result[0].content != cloudflared_tunnel_id + '.cfargotunnel.com'
 
-- name: Skip remaining tasks in bootstrap-only mode
-  ansible.builtin.meta: end_play
-  when:
-    - _cf_k8s_state == 'present'
-    - cloudflared_bootstrap_only | bool
-
-# --- FULL MODE: deploy Deployment to cluster ---
+# --- FULL MODE: deploy Deployment to cluster (skipped in bootstrap-only mode) ---
 - name: Render cloudflared Deployment
   ansible.builtin.template:
     src: deployment.yaml.j2
     dest: /tmp/cloudflared-deployment.yaml
     mode: '0600'
-  when: _cf_k8s_state == 'present'
+  when:
+    - _cf_k8s_state == 'present'
+    - not (cloudflared_bootstrap_only | bool)
 
 - name: Apply cloudflared Deployment to cluster
   ansible.builtin.command: "{{ _kubectl }} apply -f /tmp/cloudflared-deployment.yaml"
@@ -260,7 +256,9 @@
   environment:
     KUBECONFIG: "{{ cloudflared_kubeconfig_path }}"
   changed_when: true
-  when: _cf_k8s_state == 'present'
+  when:
+    - _cf_k8s_state == 'present'
+    - not (cloudflared_bootstrap_only | bool)
 
 - name: Wait for cloudflared rollout to complete
   ansible.builtin.command: >
@@ -271,9 +269,11 @@
   environment:
     KUBECONFIG: "{{ cloudflared_kubeconfig_path }}"
   changed_when: false
-  when: _cf_k8s_state == 'present'
+  when:
+    - _cf_k8s_state == 'present'
+    - not (cloudflared_bootstrap_only | bool)
 
-# --- ROUTE CONFIGURATION (skipped if cloudflared_domain is empty) ---
+# --- ROUTE CONFIGURATION (full mode only, skipped if cloudflared_domain is empty) ---
 - name: Wait for tunnel to show active connections
   ansible.builtin.uri:
     url: "https://api.cloudflare.com/client/v4/accounts/{{ cloudflared_account_id }}/cfd_tunnel/{{ cloudflared_tunnel_id }}/connections"
@@ -288,6 +288,7 @@
   delay: 10
   when:
     - _cf_k8s_state == 'present'
+    - not (cloudflared_bootstrap_only | bool)
     - cloudflared_domain != ""
 
 - name: Look up Cloudflare zone ID for domain
@@ -301,6 +302,7 @@
   no_log: true
   when:
     - _cf_k8s_state == 'present'
+    - not (cloudflared_bootstrap_only | bool)
     - cloudflared_domain != ""
     - cloudflared_zone_id == ""
 
@@ -309,6 +311,7 @@
     msg: "No Cloudflare zone found for domain '{{ cloudflared_domain }}'"
   when:
     - _cf_k8s_state == 'present'
+    - not (cloudflared_bootstrap_only | bool)
     - cloudflared_domain != ""
     - cloudflared_zone_id == ""
     - (_cf_zone.json.result | default([]) | length) == 0
@@ -320,6 +323,7 @@
          else _cf_zone.json.result[0].id }}
   when:
     - _cf_k8s_state == 'present'
+    - not (cloudflared_bootstrap_only | bool)
     - cloudflared_domain != ""
 
 - name: Build ingress list from cloudflared_services
@@ -332,6 +336,7 @@
   loop: "{{ cloudflared_services }}"
   when:
     - _cf_k8s_state == 'present'
+    - not (cloudflared_bootstrap_only | bool)
     - cloudflared_domain != ""
 
 - name: Configure tunnel ingress routes (managed config PUT)
@@ -349,6 +354,7 @@
   no_log: true
   when:
     - _cf_k8s_state == 'present'
+    - not (cloudflared_bootstrap_only | bool)
     - cloudflared_domain != ""
     - _cf_ingress_routes | default([]) | length > 0
 
@@ -364,6 +370,7 @@
   loop: "{{ cloudflared_services }}"
   when:
     - _cf_k8s_state == 'present'
+    - not (cloudflared_bootstrap_only | bool)
     - cloudflared_domain != ""
 
 - name: Create CNAME DNS records for new services
@@ -385,6 +392,7 @@
   loop: "{{ _cf_dns_check.results }}"
   when:
     - _cf_k8s_state == 'present'
+    - not (cloudflared_bootstrap_only | bool)
     - cloudflared_domain != ""
     - item.json.result | length == 0
 
@@ -404,6 +412,7 @@
   loop: "{{ _cf_dns_check.results }}"
   when:
     - _cf_k8s_state == 'present'
+    - not (cloudflared_bootstrap_only | bool)
     - cloudflared_domain != ""
     - item.json.result | length > 0
     - item.json.result[0].content != cloudflared_tunnel_id + '.cfargotunnel.com'
