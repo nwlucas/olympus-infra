@@ -36,7 +36,7 @@
     --version {{ argocd_chart_version }}
     --set server.service.type=NodePort
     --set server.service.nodePortHttp={{ argocd_nodeport | default(30080) }}
-    --set configs.params."server\.insecure"=true
+    {{ '--set configs.params."server\\.insecure"=true' if argocd_insecure | bool else '' }}
     --wait --timeout 5m
   become: true
   environment:
@@ -98,6 +98,135 @@
   when:
     - _argocd_state == 'present'
     - argocd_hostname != ""
+
+# --- KUBECONFIG UPLOAD TO 1PASSWORD ---
+- name: Check if kubeconfig already exists in 1Password
+  ansible.builtin.command: >
+    op item get "{{ argocd_kubeconfig_1password_item }}" --vault {{ argocd_kubeconfig_1password_vault }} --fields label=kubeconfig
+  register: _op_kubeconfig_check
+  failed_when: false
+  changed_when: false
+  environment:
+    OP_CONNECT_HOST: "{{ onepassword_connect_host | default('') }}"
+    OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token | default('') }}"
+  when:
+    - _argocd_state == 'present'
+    - argocd_kubeconfig_1password_item != ""
+
+- name: Create kubeconfig item in 1Password
+  ansible.builtin.shell: |
+    set -o pipefail
+    op item create \
+      --category=Login \
+      --title="{{ argocd_kubeconfig_1password_item }}" \
+      --vault={{ argocd_kubeconfig_1password_vault }} \
+      "kubeconfig[password]=$(cat {{ k3s_kubeconfig_path }})"
+  args:
+    executable: /bin/bash
+  become: true
+  no_log: true
+  changed_when: true
+  environment:
+    OP_CONNECT_HOST: "{{ onepassword_connect_host | default('') }}"
+    OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token | default('') }}"
+  when:
+    - _argocd_state == 'present'
+    - argocd_kubeconfig_1password_item != ""
+    - _op_kubeconfig_check.rc != 0
+
+- name: Update kubeconfig in 1Password (item exists)
+  ansible.builtin.shell: |
+    set -o pipefail
+    op item edit "{{ argocd_kubeconfig_1password_item }}" \
+      --vault={{ argocd_kubeconfig_1password_vault }} \
+      "kubeconfig[password]=$(cat {{ k3s_kubeconfig_path }})"
+  args:
+    executable: /bin/bash
+  become: true
+  no_log: true
+  changed_when: true
+  environment:
+    OP_CONNECT_HOST: "{{ onepassword_connect_host | default('') }}"
+    OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token | default('') }}"
+  when:
+    - _argocd_state == 'present'
+    - argocd_kubeconfig_1password_item != ""
+    - _op_kubeconfig_check.rc == 0
+
+# --- LOCAL CLUSTER APP CREATION ---
+# Creates ArgoCD Applications pointing to the local cluster (https://kubernetes.default.svc).
+# Used on management-hub to bootstrap foundation services via GitOps.
+
+- name: Install argocd CLI (Linux, for local app creation)
+  ansible.builtin.shell: |
+    set -o pipefail
+    VERSION=$(curl -sL https://api.github.com/repos/argoproj/argo-cd/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    curl -sL "https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-linux-amd64" \
+      -o /usr/local/bin/argocd
+    chmod +x /usr/local/bin/argocd
+  args:
+    executable: /bin/bash
+  become: true
+  changed_when: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_create_local_apps | bool
+    - argocd_apps | length > 0
+    - ansible_system == 'Linux'
+
+- name: Log in to local ArgoCD (for local app creation)
+  ansible.builtin.command: >
+    argocd login localhost:{{ argocd_nodeport }}
+    --username admin
+    --password {{ argocd_initial_password.stdout | trim }}
+    --plaintext
+    --insecure
+  no_log: true
+  changed_when: true
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  when:
+    - _argocd_state == 'present'
+    - argocd_create_local_apps | bool
+    - argocd_apps | length > 0
+
+- name: Create local cluster ArgoCD Applications
+  ansible.builtin.command: >
+    argocd app create {{ item.name }}
+    --repo {{ argocd_gitops_repo }}
+    --path {{ item.path }}
+    --revision {{ argocd_gitops_revision }}
+    --dest-server https://kubernetes.default.svc
+    --dest-namespace {{ item.dest_namespace }}
+    --sync-policy automated
+    --auto-prune
+    --self-heal
+    --sync-option CreateNamespace=true
+    --sync-option ServerSideApply=true
+    --annotations "argocd.argoproj.io/sync-wave={{ item.sync_wave | default('0') }}"
+    --upsert
+  loop: "{{ argocd_apps }}"
+  register: _argocd_local_app_create
+  changed_when: true
+  failed_when:
+    - _argocd_local_app_create.rc != 0
+    - "'app path does not exist' not in (_argocd_local_app_create.stderr | default(''))"
+  become: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_create_local_apps | bool
+    - argocd_gitops_repo != ""
+    - argocd_apps | length > 0
+
+- name: Warn about missing local GitOps paths
+  ansible.builtin.debug:
+    msg: "WARNING: {{ item.item.name }} path '{{ item.item.path }}' not yet in gitops repo"
+  loop: "{{ _argocd_local_app_create.results | default([]) }}"
+  when:
+    - argocd_create_local_apps | bool
+    - item.rc | default(0) != 0
+    - "'app path does not exist' in (item.stderr | default(''))"
 
 # --- CLUSTER REGISTRATION ---
 # Runs when argocd_register_cluster: true regardless of argocd_state.

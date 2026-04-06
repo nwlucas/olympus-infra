@@ -1,8 +1,10 @@
 ---
 # Pull-mode playbook for management-hub
 # Runs daily at 02:00 via crontab as the ansible user.
-# Re-applies all idempotent foundation roles to correct drift.
-# IngressRoutes, cloudflared config, and Helm state are all reconciled here.
+# Re-applies idempotent Ansible-managed foundation roles to correct drift.
+#
+# NOTE: cert-manager, external-secrets, traefik-config, external-dns, and
+# cloudflared Deployment are now managed by ArgoCD (GitOps). Do NOT add them here.
 
 - name: Management Hub — Drift Correction
   hosts: management-hub
@@ -14,17 +16,8 @@
         gather_subset: [min]
 
   roles:
-    - role: traefik
-      tags: [traefik]
-
     - role: 1password-connect
       tags: [1password-connect]
 
-    - role: external-secrets
-      tags: [external-secrets]
-
     - role: argocd
       tags: [argocd]
-
-    - role: cloudflared-k8s
-      tags: [cloudflared-k8s]

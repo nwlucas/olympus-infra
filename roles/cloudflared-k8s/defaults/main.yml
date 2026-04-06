@@ -28,3 +28,16 @@ cloudflared_services:
     k8s_service: "http://connect-1password-connect.1password:8080"
   - subdomain: traefik
     k8s_service: "http://traefik-dashboard.traefik:9000"
+
+# --- Bootstrap-only mode ---
+# When true: create tunnel + seed k8s secret + configure catch-all ingress rule.
+# Skip Deployment creation (ArgoCD handles that via GitOps).
+cloudflared_bootstrap_only: false
+# The ingress hostname for this cluster (e.g. ing.mgmt.nwlnexus.net).
+# When set, Ansible creates the CNAME: <ingress_hostname> → <tunnel-uuid>.cfargotunnel.com
+# and configures the tunnel catch-all rule to forward to cloudflared_catch_all_service.
+cloudflared_ingress_hostname: ""
+# The backend service cloudflared forwards all traffic to (catch-all rule).
+# management-hub: https://traefik.kube-system:443
+# ai-hub:         https://traefik.traefik:443
+cloudflared_catch_all_service: "https://traefik.kube-system:443"

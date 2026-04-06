@@ -11,5 +11,11 @@ k3s_role: server
 tailscale_state: present
 tailscale_hostname: management-hub
 
-# Cloudflared (binary only; tunnel runs in k3s)
+# Cloudflared (binary only; tunnel + Deployment run in k3s via GitOps)
 cloudflared_state: present
+
+# 1Password Connect — still managed by Ansible (prerequisite for ESO)
+onepassword_connect_state: present
+
+# ArgoCD — still managed by Ansible (prerequisite for GitOps)
+argocd_state: present
