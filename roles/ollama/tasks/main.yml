@@ -4,20 +4,57 @@
     name: ollama
     state: "{{ 'present' if ollama_state == 'present' else 'absent' }}"
 
-- name: Stop and unload Ollama service
-  ansible.builtin.command: /opt/homebrew/bin/brew services stop ollama
+- name: Deploy Ollama LaunchDaemon plist
+  ansible.builtin.template:
+    src: ollama.plist.j2
+    dest: /Library/LaunchDaemons/homebrew.mxcl.ollama.plist
+    owner: root
+    group: wheel
+    mode: "0644"
   become: true
-  when: ollama_state == "absent"
+  when: ollama_state == "present"
+  register: ollama_plist
+
+- name: Bootstrap Ollama LaunchDaemon
+  ansible.builtin.command: launchctl bootstrap system /Library/LaunchDaemons/homebrew.mxcl.ollama.plist
+  become: true
   failed_when: false
   changed_when: true
+  when:
+    - ollama_state == "present"
+    - ollama_plist is changed
 
-- name: Start Ollama service (LaunchDaemon — survives reboot without GUI session)
-  ansible.builtin.command: /opt/homebrew/bin/brew services start ollama
+- name: Kickstart Ollama (restart if plist changed)
+  ansible.builtin.command: launchctl kickstart -k system/homebrew.mxcl.ollama
   become: true
-  register: ollama_start
-  changed_when: "'Successfully started' in ollama_start.stdout"
   failed_when: false
-  when: ollama_state == "present"
+  changed_when: true
+  when:
+    - ollama_state == "present"
+    - ollama_plist is changed
+
+- name: Ensure Ollama LaunchDaemon is loaded and running
+  ansible.builtin.command: launchctl kickstart -k system/homebrew.mxcl.ollama
+  become: true
+  failed_when: false
+  changed_when: false
+  when:
+    - ollama_state == "present"
+    - ollama_plist is not changed
+
+- name: Remove Ollama LaunchDaemon
+  ansible.builtin.command: launchctl bootout system /Library/LaunchDaemons/homebrew.mxcl.ollama.plist
+  become: true
+  failed_when: false
+  changed_when: true
+  when: ollama_state == "absent"
+
+- name: Remove Ollama LaunchDaemon plist
+  ansible.builtin.file:
+    path: /Library/LaunchDaemons/homebrew.mxcl.ollama.plist
+    state: absent
+  become: true
+  when: ollama_state == "absent"
 
 - name: Wait for Ollama to be ready
   ansible.builtin.uri:
