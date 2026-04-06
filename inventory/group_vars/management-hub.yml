@@ -1,5 +1,5 @@
 ---
-# Management host vars for ansible-pull (pull-mode, health checks only)
+# Management Hub vars for ansible-pull (pull-mode, health checks only)
 # Secrets come from 1Password Connect via External Secrets Operator
 ansible_user: ansible
 
@@ -9,7 +9,7 @@ k3s_role: server
 
 # Tailscale
 tailscale_state: present
-tailscale_hostname: management
+tailscale_hostname: management-hub
 
 # Cloudflared (binary only; tunnel runs in k3s)
 cloudflared_state: present

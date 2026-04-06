@@ -1,11 +1,11 @@
 ---
-# Pull-mode playbook for management host
+# Pull-mode playbook for management-hub
 # Runs daily at 02:00 via crontab as the ansible user.
 # Non-destructive: health checks only, no installs.
 # Full installs/changes are done via push playbooks.
 
-- name: Management Host — Health Checks
-  hosts: management
+- name: Management Hub — Health Checks
+  hosts: management-hub
   gather_facts: true
 
   tasks:
