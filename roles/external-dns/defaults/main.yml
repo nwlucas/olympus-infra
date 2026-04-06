@@ -1,0 +1,12 @@
+---
+external_dns_state: present
+external_dns_namespace: external-dns
+external_dns_chart_version: "1.15.0"
+external_dns_cloudflare_api_token: ""
+external_dns_domain_filters: []        # e.g. ["nwlnexus.net"]
+external_dns_policy: sync              # sync or upsert-only
+external_dns_sources:                  # resource types to watch
+  - service
+  - ingress
+  - traefik-proxy
+k3s_kubeconfig_path: /etc/rancher/k3s/k3s.yaml

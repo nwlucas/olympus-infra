@@ -10,6 +10,64 @@
   become: true
   when: _k3s_state == 'present'
 
+- name: Write k3s config
+  ansible.builtin.copy:
+    dest: /etc/rancher/k3s/config.yaml
+    content: |
+      write-kubeconfig-mode: "0644"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: restart k3s
+  when: _k3s_state == 'present'
+
+- name: Remove k3s disable skip files (allow bundled components to redeploy)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /var/lib/rancher/k3s/server/manifests/traefik.yaml.skip
+    - /var/lib/rancher/k3s/server/manifests/traefik-crd.yaml.skip
+    - /var/lib/rancher/k3s/server/manifests/servicelb.yaml.skip
+  become: true
+  notify: restart k3s
+  when: _k3s_state == 'present'
+
+- name: Remove orphaned Traefik CRDs from prior user-managed install
+  ansible.builtin.shell: |
+    set -o pipefail
+    ORPHANS=$(kubectl get crd -o name 2>/dev/null | grep traefik.io | \
+      xargs -I{} sh -c 'kubectl get {} -o jsonpath="{.metadata.labels.app\.kubernetes\.io/managed-by}" 2>/dev/null' | \
+      grep -v "Helm" || true)
+    if [ -n "$ORPHANS" ]; then
+      kubectl get crd --no-headers 2>/dev/null | grep traefik.io | awk '{print $1}' | \
+        xargs kubectl delete crd --ignore-not-found
+    fi
+  args:
+    executable: /bin/bash
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: false
+  when: _k3s_state == 'present'
+  ignore_errors: true
+
+- name: Flush handlers (apply k3s config restart if needed)
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for k3s API to be available after config change
+  ansible.builtin.command: kubectl get nodes
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  register: _k3s_api_ready
+  until: _k3s_api_ready.rc == 0
+  retries: 12
+  delay: 5
+  become: true
+  changed_when: false
+  when: _k3s_state == 'present'
+
 - name: Ensure kubeconfig is world-readable
   ansible.builtin.file:
     path: "{{ k3s_kubeconfig_path }}"

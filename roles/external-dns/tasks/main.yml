@@ -1,0 +1,86 @@
+---
+- name: Set external-dns state
+  ansible.builtin.set_fact:
+    _external_dns_state: "{{ external_dns_state | default('present') }}"
+
+# --- PRESENT ---
+
+- name: Add external-dns Helm repo
+  ansible.builtin.command: helm repo add external-dns https://kubernetes-sigs.github.io/external-dns/
+  register: repo_add
+  changed_when: "'already exists' not in repo_add.stderr"
+  become: true
+  when: _external_dns_state == 'present'
+
+- name: Update Helm repos
+  ansible.builtin.command: helm repo update
+  become: true
+  changed_when: false
+  when: _external_dns_state == 'present'
+
+- name: Create external-dns namespace
+  ansible.builtin.command: kubectl create namespace {{ external_dns_namespace }}
+  register: ns_create
+  failed_when:
+    - ns_create.rc != 0
+    - "'already exists' not in ns_create.stderr"
+  changed_when: ns_create.rc == 0
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  when: _external_dns_state == 'present'
+
+- name: Create Cloudflare API token secret
+  ansible.builtin.shell: >
+    kubectl create secret generic cloudflare-api-token
+    --namespace {{ external_dns_namespace }}
+    --from-literal=api-token={{ external_dns_cloudflare_api_token }}
+    --dry-run=client -o yaml | kubectl apply -f -
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: true
+  no_log: true
+  when:
+    - _external_dns_state == 'present'
+    - external_dns_cloudflare_api_token != ""
+
+- name: Build Helm domain filters arg
+  ansible.builtin.set_fact:
+    _external_dns_domain_arg: >-
+      {{
+        "--set 'domainFilters={" + external_dns_domain_filters | join(',') + "}'"
+        if external_dns_domain_filters | length > 0
+        else ''
+      }}
+  when: _external_dns_state == 'present'
+
+- name: Install external-dns via Helm
+  ansible.builtin.shell: >
+    helm upgrade --install external-dns external-dns/external-dns
+    --namespace {{ external_dns_namespace }}
+    --version {{ external_dns_chart_version }}
+    --set provider.name=cloudflare
+    --set env[0].name=CF_API_TOKEN
+    --set env[0].valueFrom.secretKeyRef.name=cloudflare-api-token
+    --set env[0].valueFrom.secretKeyRef.key=api-token
+    --set policy={{ external_dns_policy }}
+    --set 'sources={{"{"}}{{ external_dns_sources | join(',') }}{{"}"}}'
+    {{ _external_dns_domain_arg }}
+    --wait
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: true
+  when: _external_dns_state == 'present'
+
+# --- ABSENT ---
+
+- name: Uninstall external-dns
+  ansible.builtin.command: helm uninstall external-dns -n {{ external_dns_namespace }}
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  failed_when: false
+  changed_when: true
+  when: _external_dns_state == 'absent'

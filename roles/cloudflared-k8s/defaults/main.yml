@@ -2,13 +2,25 @@
 cloudflared_k8s_state: present
 cloudflared_namespace: cloudflared
 cloudflared_tunnel_name: ""
-cloudflared_hostname: ""
 # Prefer cloudflared_api_token var (from vault); fall back to file on host
 cloudflared_api_token: ""
 cloudflared_token_file: "/etc/olympus/cloudflare-api-token"
 cloudflared_account_id: ""   # set in group_vars
 cloudflared_image: "cloudflare/cloudflared:latest"
 cloudflared_replicas: 1
-# Service to route traffic to (defaults to traefik)
-cloudflared_upstream_service: "traefik.traefik.svc.cluster.local"
-cloudflared_upstream_port: 80
+
+# --- Route configuration ---
+# Base domain for tunnel public hostnames (e.g. "example.com")
+cloudflared_domain: ""
+# Cloudflare zone ID — looked up dynamically from cloudflared_domain if empty
+cloudflared_zone_id: ""
+# Services to expose through the tunnel.
+# Each entry maps a public subdomain to a k8s cluster service.
+# The full public hostname will be: {{ subdomain }}.{{ cloudflared_domain }}
+cloudflared_services:
+  - subdomain: argocd
+    k8s_service: "http://argocd-server.argocd:80"
+  - subdomain: connect
+    k8s_service: "http://connect-1password-connect.1password:8080"
+  - subdomain: traefik
+    k8s_service: "http://traefik-dashboard.traefik:9000"

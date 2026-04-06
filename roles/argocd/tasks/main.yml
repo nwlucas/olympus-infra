@@ -8,10 +8,12 @@
     helm repo add argo https://argoproj.github.io/argo-helm
   register: repo_add
   changed_when: "'already exists' not in repo_add.stderr"
+  become: true
   when: _argocd_state == 'present'
 
 - name: Update Helm repos
   ansible.builtin.command: helm repo update
+  become: true
   changed_when: false
   when: _argocd_state == 'present'
 
@@ -22,6 +24,9 @@
     - ns_create.rc != 0
     - "'already exists' not in ns_create.stderr"
   changed_when: ns_create.rc == 0
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   when: _argocd_state == 'present'
 
 - name: Install ArgoCD via Helm
@@ -30,17 +35,27 @@
     --namespace {{ argocd_namespace }}
     --version {{ argocd_chart_version }}
     --set server.service.type=ClusterIP
+    --set configs.params."server\.insecure"=true
     --wait --timeout 5m
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   changed_when: true
   when: _argocd_state == 'present'
 
-- name: Wait for ArgoCD server to be ready
-  ansible.builtin.command: >
-    kubectl wait pod
-    --for=condition=Ready
-    --selector=app.kubernetes.io/name=argocd-server
-    -n {{ argocd_namespace }}
-    --timeout=180s
+- name: Restart ArgoCD server to pick up ConfigMap changes
+  ansible.builtin.command: kubectl rollout restart deployment/argocd-server -n {{ argocd_namespace }}
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: true
+  when: _argocd_state == 'present'
+
+- name: Wait for ArgoCD server rollout
+  ansible.builtin.command: kubectl rollout status deployment/argocd-server -n {{ argocd_namespace }} --timeout=120s
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   changed_when: false
   when: _argocd_state == 'present'
 
@@ -51,6 +66,9 @@
       -o jsonpath="{.data.password}" | base64 -d
   args:
     executable: /bin/bash
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   register: argocd_initial_password
   changed_when: false
   when: _argocd_state == 'present'
@@ -69,6 +87,67 @@
     - _argocd_state == 'present'
     - argocd_register_cluster | default(false)
     - ansible_system == 'Darwin'
+
+# Dynamically resolve management host Tailscale IP via API
+- name: Get Tailscale OAuth token (for management IP lookup)
+  ansible.builtin.uri:
+    url: https://api.tailscale.com/api/v2/oauth/token
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: client_credentials
+      client_id: "{{ tailscale_oauth_client_id }}"
+      client_secret: "{{ tailscale_oauth_client_secret }}"
+    status_code: 200
+  register: _ts_mgmt_oauth
+  no_log: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_register_cluster | default(false)
+    - tailscale_oauth_client_id | default('') != ''
+    - tailscale_oauth_client_secret | default('') != ''
+
+- name: List Tailscale devices
+  ansible.builtin.uri:
+    url: "https://api.tailscale.com/api/v2/tailnet/-/devices?fields=default"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _ts_mgmt_oauth.json.access_token }}"
+    status_code: 200
+  register: _ts_devices
+  no_log: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_register_cluster | default(false)
+    - _ts_mgmt_oauth is defined
+    - _ts_mgmt_oauth.status | default(0) == 200
+
+- name: Set management_tailscale_ip from Tailscale API
+  ansible.builtin.set_fact:
+    management_tailscale_ip: >-
+      {{ _ts_devices.json.devices
+         | selectattr('hostname', 'equalto', argocd_management_hostname)
+         | map(attribute='addresses')
+         | first
+         | select('match', '^[\d.]+$')
+         | first }}
+  no_log: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_register_cluster | default(false)
+    - _ts_devices is defined
+    - _ts_devices.status | default(0) == 200
+    - (_ts_devices.json.devices | selectattr('hostname', 'equalto', argocd_management_hostname) | list | length) > 0
+
+- name: Fail if management Tailscale IP could not be resolved
+  ansible.builtin.fail:
+    msg: >
+      Could not resolve Tailscale IP for host '{{ argocd_management_hostname }}'.
+      Check that the device is online and that tailscale_oauth_client_id/secret are set.
+  when:
+    - _argocd_state == 'present'
+    - argocd_register_cluster | default(false)
+    - management_tailscale_ip | default('') == ''
 
 - name: Patch colima kubeconfig server URL to Tailscale IP
   ansible.builtin.command: >
@@ -112,6 +191,9 @@
 
 - name: Uninstall ArgoCD
   ansible.builtin.command: helm uninstall argocd -n {{ argocd_namespace }}
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   failed_when: false
   changed_when: true
   when: _argocd_state == 'absent'

@@ -1,0 +1,9 @@
+---
+cert_manager_state: present
+cert_manager_namespace: cert-manager
+cert_manager_chart_version: "v1.16.2"
+cert_manager_email: ""                  # Let's Encrypt registration email
+cert_manager_cloudflare_api_token: ""  # Cloudflare API token for DNS-01 challenge
+cert_manager_domain: ""                # base domain for wildcard cert (e.g. nwlnexus.net)
+cert_manager_cluster_issuer_name: letsencrypt-prod
+k3s_kubeconfig_path: /etc/rancher/k3s/k3s.yaml

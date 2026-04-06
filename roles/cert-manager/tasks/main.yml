@@ -1,0 +1,123 @@
+---
+- name: Set cert-manager state
+  ansible.builtin.set_fact:
+    _cert_manager_state: "{{ cert_manager_state | default('present') }}"
+
+# --- PRESENT ---
+
+- name: Add Jetstack Helm repo
+  ansible.builtin.command: helm repo add jetstack https://charts.jetstack.io
+  register: repo_add
+  changed_when: "'already exists' not in repo_add.stderr"
+  become: true
+  when: _cert_manager_state == 'present'
+
+- name: Update Helm repos
+  ansible.builtin.command: helm repo update
+  become: true
+  changed_when: false
+  when: _cert_manager_state == 'present'
+
+- name: Create cert-manager namespace
+  ansible.builtin.command: kubectl create namespace {{ cert_manager_namespace }}
+  register: ns_create
+  failed_when:
+    - ns_create.rc != 0
+    - "'already exists' not in ns_create.stderr"
+  changed_when: ns_create.rc == 0
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  when: _cert_manager_state == 'present'
+
+- name: Install cert-manager via Helm
+  ansible.builtin.command: >
+    helm upgrade --install cert-manager jetstack/cert-manager
+    --namespace {{ cert_manager_namespace }}
+    --version {{ cert_manager_chart_version }}
+    --set crds.enabled=true
+    --wait
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: true
+  when: _cert_manager_state == 'present'
+
+- name: Wait for cert-manager webhook rollout
+  ansible.builtin.command: >
+    kubectl rollout status deployment/cert-manager-webhook
+    -n {{ cert_manager_namespace }}
+    --timeout=120s
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: false
+  when: _cert_manager_state == 'present'
+
+- name: Create Cloudflare API token secret
+  ansible.builtin.shell: >
+    kubectl create secret generic cloudflare-api-token
+    --namespace {{ cert_manager_namespace }}
+    --from-literal=api-token={{ cert_manager_cloudflare_api_token }}
+    --dry-run=client -o yaml | kubectl apply -f -
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: true
+  no_log: true
+  when:
+    - _cert_manager_state == 'present'
+    - cert_manager_cloudflare_api_token != ""
+
+- name: Render ClusterIssuer manifest
+  ansible.builtin.template:
+    src: cluster-issuer.yaml.j2
+    dest: /tmp/cert-manager-cluster-issuer.yaml
+    mode: "0600"
+  when:
+    - _cert_manager_state == 'present'
+    - cert_manager_email != ""
+    - cert_manager_domain != ""
+
+- name: Apply ClusterIssuer manifest
+  ansible.builtin.command: kubectl apply -f /tmp/cert-manager-cluster-issuer.yaml
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: true
+  when:
+    - _cert_manager_state == 'present'
+    - cert_manager_email != ""
+    - cert_manager_domain != ""
+
+- name: Render wildcard Certificate manifest
+  ansible.builtin.template:
+    src: wildcard-certificate.yaml.j2
+    dest: /tmp/cert-manager-wildcard-certificate.yaml
+    mode: "0600"
+  when:
+    - _cert_manager_state == 'present'
+    - cert_manager_email != ""
+    - cert_manager_domain != ""
+
+- name: Apply wildcard Certificate manifest
+  ansible.builtin.command: kubectl apply -f /tmp/cert-manager-wildcard-certificate.yaml
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: true
+  when:
+    - _cert_manager_state == 'present'
+    - cert_manager_email != ""
+    - cert_manager_domain != ""
+
+# --- ABSENT ---
+
+- name: Uninstall cert-manager
+  ansible.builtin.command: helm uninstall cert-manager -n {{ cert_manager_namespace }}
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  failed_when: false
+  changed_when: true
+  when: _cert_manager_state == 'absent'

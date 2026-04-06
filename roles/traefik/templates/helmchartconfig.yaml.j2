@@ -1,0 +1,11 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    api:
+      dashboard: true
+      insecure: true
+{{ traefik_extra_values | indent(4, first=true) if traefik_extra_values else '' }}

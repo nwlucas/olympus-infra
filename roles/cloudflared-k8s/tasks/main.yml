@@ -98,6 +98,9 @@
     - cf_ns_create.rc != 0
     - "'already exists' not in cf_ns_create.stderr"
   changed_when: cf_ns_create.rc == 0
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   when: _cf_k8s_state == 'present'
 
 - name: Get tunnel token
@@ -120,20 +123,10 @@
       --dry-run=client -o yaml | kubectl apply -f -
   args:
     executable: /bin/bash
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   no_log: true
-  changed_when: true
-  when: _cf_k8s_state == 'present'
-
-- name: Apply cloudflared ConfigMap
-  ansible.builtin.template:
-    src: configmap.yaml.j2
-    dest: /tmp/cloudflared-configmap.yaml
-    mode: '0600'
-  register: configmap_rendered
-  when: _cf_k8s_state == 'present'
-
-- name: Apply ConfigMap to cluster
-  ansible.builtin.command: kubectl apply -f /tmp/cloudflared-configmap.yaml
   changed_when: true
   when: _cf_k8s_state == 'present'
 
@@ -146,21 +139,163 @@
 
 - name: Apply Deployment to cluster
   ansible.builtin.command: kubectl apply -f /tmp/cloudflared-deployment.yaml
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   changed_when: true
   when: _cf_k8s_state == 'present'
 
-- name: Wait for cloudflared pod to be ready
+- name: Wait for cloudflared rollout to complete
   ansible.builtin.command: >
-    kubectl wait pod
-    --for=condition=Ready
-    --selector=app=cloudflared
+    kubectl rollout status deployment/cloudflared
     -n {{ cloudflared_namespace }}
     --timeout=120s
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   changed_when: false
   when: _cf_k8s_state == 'present'
 
+# --- ROUTE CONFIGURATION (skipped if cloudflared_domain is empty) ---
+- name: Wait for tunnel to show active connections
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/accounts/{{ cloudflared_account_id }}/cfd_tunnel/{{ cloudflared_tunnel_id }}/connections"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cf_token }}"
+    status_code: 200
+  register: _cf_connections
+  no_log: true
+  until: (_cf_connections.json.result | default([]) | length) > 0
+  retries: 18
+  delay: 10
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_domain != ""
+
+- name: Look up Cloudflare zone ID for domain
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/zones?name={{ cloudflared_domain }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cf_token }}"
+    status_code: 200
+  register: _cf_zone
+  no_log: true
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_domain != ""
+    - cloudflared_zone_id == ""
+
+- name: Fail if zone not found for domain
+  ansible.builtin.fail:
+    msg: "No Cloudflare zone found for domain '{{ cloudflared_domain }}'"
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_domain != ""
+    - cloudflared_zone_id == ""
+    - (_cf_zone.json.result | default([]) | length) == 0
+
+- name: Set resolved zone ID fact
+  ansible.builtin.set_fact:
+    _cf_zone_id: >-
+      {{ cloudflared_zone_id if cloudflared_zone_id != ''
+         else _cf_zone.json.result[0].id }}
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_domain != ""
+
+- name: Build ingress list from cloudflared_services
+  ansible.builtin.set_fact:
+    _cf_ingress_routes: >-
+      {{ _cf_ingress_routes | default([])
+         + [{'hostname': item.subdomain + '.' + cloudflared_domain,
+             'service': item.k8s_service}] }}
+  loop: "{{ cloudflared_services }}"
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_domain != ""
+
+- name: Configure tunnel ingress routes (managed config PUT)
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/accounts/{{ cloudflared_account_id }}/cfd_tunnel/{{ cloudflared_tunnel_id }}/configurations"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ cf_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      config:
+        ingress: "{{ _cf_ingress_routes + [{'service': 'http_status:404'}] }}"
+    status_code: 200
+  no_log: true
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_domain != ""
+    - _cf_ingress_routes | default([]) | length > 0
+
+- name: Check existing CNAME DNS records for each service
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ _cf_zone_id }}/dns_records?type=CNAME&name={{ item.subdomain }}.{{ cloudflared_domain }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cf_token }}"
+    status_code: 200
+  register: _cf_dns_check
+  no_log: true
+  loop: "{{ cloudflared_services }}"
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_domain != ""
+
+- name: Create CNAME DNS records for new services
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ _cf_zone_id }}/dns_records"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ cf_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      type: CNAME
+      name: "{{ item.item.subdomain }}.{{ cloudflared_domain }}"
+      content: "{{ cloudflared_tunnel_id }}.cfargotunnel.com"
+      proxied: true
+      ttl: 1
+    status_code: 200
+  no_log: true
+  loop: "{{ _cf_dns_check.results }}"
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_domain != ""
+    - item.json.result | length == 0
+
+- name: Update CNAME DNS records where tunnel target changed
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ _cf_zone_id }}/dns_records/{{ item.json.result[0].id }}"
+    method: PATCH
+    headers:
+      Authorization: "Bearer {{ cf_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      content: "{{ cloudflared_tunnel_id }}.cfargotunnel.com"
+      proxied: true
+    status_code: 200
+  no_log: true
+  loop: "{{ _cf_dns_check.results }}"
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_domain != ""
+    - item.json.result | length > 0
+    - item.json.result[0].content != cloudflared_tunnel_id + '.cfargotunnel.com'
+
+# --- ABSENT ---
 - name: Tear down cloudflared k8s resources
   ansible.builtin.command: kubectl delete namespace {{ cloudflared_namespace }}
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   failed_when: false
   changed_when: true
   when: _cf_k8s_state == 'absent'

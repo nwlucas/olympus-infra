@@ -3,69 +3,66 @@
   ansible.builtin.set_fact:
     _traefik_state: "{{ traefik_state | default('present') }}"
 
-- name: Install helm (macOS)
-  community.general.homebrew:
-    name: helm
-    state: present
-  when:
-    - _traefik_state == 'present'
-    - ansible_system == 'Darwin'
+# --- PRESENT ---
+# Customize the k3s-bundled Traefik via HelmChartConfig (no separate Helm install)
+- name: Render Traefik HelmChartConfig
+  ansible.builtin.template:
+    src: helmchartconfig.yaml.j2
+    dest: /tmp/traefik-helmchartconfig.yaml
+    mode: '0600'
+  when: _traefik_state == 'present'
 
-- name: Install helm (Linux)
+- name: Apply Traefik HelmChartConfig
+  ansible.builtin.command: kubectl apply -f /tmp/traefik-helmchartconfig.yaml
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: true
+  when: _traefik_state == 'present'
+
+- name: Wait for k3s to deploy/redeploy Traefik
   ansible.builtin.shell: |
     set -o pipefail
-    curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    kubectl get deployment traefik -n {{ traefik_namespace }} 2>/dev/null && \
+    kubectl rollout status deployment/traefik -n {{ traefik_namespace }} --timeout=30s
   args:
-    creates: /usr/local/bin/helm
     executable: /bin/bash
   become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  register: _traefik_ready
+  until: _traefik_ready.rc == 0
+  retries: 20
+  delay: 15
+  changed_when: false
+  when: _traefik_state == 'present'
+  ignore_errors: "{{ ansible_check_mode }}"
+
+- name: Render Traefik dashboard IngressRoute
+  ansible.builtin.template:
+    src: dashboard-ingressroute.yaml.j2
+    dest: /tmp/traefik-dashboard-ingressroute.yaml
+    mode: '0600'
   when:
     - _traefik_state == 'present'
-    - ansible_system == 'Linux'
+    - traefik_dashboard_hostname != ""
 
-- name: Add Traefik Helm repo
-  ansible.builtin.command: helm repo add traefik {{ traefik_repo_url }}
-  register: repo_add
-  changed_when: "'already exists' not in repo_add.stderr"
+- name: Apply Traefik dashboard IngressRoute
+  ansible.builtin.command: kubectl apply -f /tmp/traefik-dashboard-ingressroute.yaml
+  become: true
   environment:
-    KUBECONFIG: "{{ k3s_kubeconfig_path | default(ansible_env.HOME + '/.kube/config') }}"
-  when: _traefik_state == 'present'
-
-- name: Update Helm repos
-  ansible.builtin.command: helm repo update
-  when: _traefik_state == 'present'
-  changed_when: false
-
-- name: Create traefik namespace
-  ansible.builtin.command: kubectl create namespace {{ traefik_namespace }}
-  register: ns_create
-  failed_when:
-    - ns_create.rc != 0
-    - "'already exists' not in ns_create.stderr"
-  changed_when: ns_create.rc == 0
-  when: _traefik_state == 'present'
-
-- name: Check if Traefik is already installed
-  ansible.builtin.command: helm status traefik -n {{ traefik_namespace }}
-  register: traefik_status
-  failed_when: false
-  changed_when: false
-  when: _traefik_state == 'present'
-
-- name: Install Traefik via Helm
-  ansible.builtin.command: >
-    helm upgrade --install traefik traefik/traefik
-    --namespace {{ traefik_namespace }}
-    --version {{ traefik_chart_version }}
-    {{ '--values ' + traefik_values_file if traefik_values_file else '' }}
-    --wait
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   changed_when: true
   when:
     - _traefik_state == 'present'
-    - traefik_status.rc != 0
+    - traefik_dashboard_hostname != ""
 
-- name: Uninstall Traefik
-  ansible.builtin.command: helm uninstall traefik -n {{ traefik_namespace }}
+# --- ABSENT ---
+- name: Remove Traefik HelmChartConfig customizations
+  ansible.builtin.command: kubectl delete helmchartconfig traefik -n kube-system --ignore-not-found
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
   failed_when: false
   changed_when: true
   when: _traefik_state == 'absent'
