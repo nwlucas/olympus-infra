@@ -1,0 +1,6 @@
+#!/bin/bash
+# Wrapper to run LiteLLM as {{ ansible_user }} from a root LaunchDaemon
+exec sudo -Hu {{ ansible_user }} /opt/homebrew/bin/pipx run litellm \
+  --config {{ litellm_config_dest }} \
+  --port {{ litellm_port }} \
+  --host 0.0.0.0

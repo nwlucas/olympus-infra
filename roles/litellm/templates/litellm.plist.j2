@@ -5,19 +5,10 @@
 <dict>
   <key>Label</key>
   <string>com.litellm.proxy</string>
-  <key>UserName</key>
-  <string>{{ ansible_user }}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/homebrew/bin/pipx</string>
-    <string>run</string>
-    <string>litellm</string>
-    <string>--config</string>
-    <string>{{ litellm_config_dest }}</string>
-    <string>--port</string>
-    <string>{{ litellm_port }}</string>
-    <string>--host</string>
-    <string>0.0.0.0</string>
+    <string>/bin/bash</string>
+    <string>/usr/local/bin/litellm-serve</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -27,12 +18,5 @@
   <string>/var/log/litellm.log</string>
   <key>StandardErrorPath</key>
   <string>/var/log/litellm-error.log</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>HOME</key>
-    <string>/var/ansible</string>
-    <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-  </dict>
 </dict>
 </plist>

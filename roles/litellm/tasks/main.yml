@@ -24,11 +24,32 @@
   ansible.builtin.file:
     path: "{{ litellm_config_dest | dirname }}"
     state: directory
-    mode: "0750"
+    mode: "0755"
     owner: "{{ ansible_user }}"
+  become: true
   when: litellm_state == "present"
 
-- name: Install LiteLLM launchd plist
+- name: Deploy LiteLLM config
+  ansible.builtin.template:
+    src: litellm-config.yaml.j2
+    dest: "{{ litellm_config_dest }}"
+    owner: "{{ ansible_user }}"
+    mode: "0640"
+  become: true
+  notify: Restart LiteLLM
+  when: litellm_state == "present"
+
+- name: Deploy LiteLLM wrapper script
+  ansible.builtin.template:
+    src: litellm-serve.j2
+    dest: /usr/local/bin/litellm-serve
+    owner: root
+    group: wheel
+    mode: "0755"
+  become: true
+  when: litellm_state == "present"
+
+- name: Deploy LiteLLM LaunchDaemon plist
   ansible.builtin.template:
     src: litellm.plist.j2
     dest: /Library/LaunchDaemons/com.litellm.proxy.plist
@@ -38,24 +59,48 @@
   become: true
   notify: Restart LiteLLM
   when: litellm_state == "present"
+  register: litellm_plist
 
-- name: Load LiteLLM launchd daemon
-  ansible.builtin.command: launchctl load -w /Library/LaunchDaemons/com.litellm.proxy.plist
+- name: Bootout existing LiteLLM LaunchDaemon (if running)
+  ansible.builtin.command: launchctl bootout system/com.litellm.proxy
+  become: true
+  failed_when: false
+  changed_when: true
+  when:
+    - litellm_state == "present"
+    - litellm_plist is changed
+
+- name: Bootstrap LiteLLM LaunchDaemon
+  ansible.builtin.command: launchctl bootstrap system /Library/LaunchDaemons/com.litellm.proxy.plist
   become: true
   changed_when: true
-  failed_when: false
-  when: litellm_state == "present"
+  when:
+    - litellm_state == "present"
+    - litellm_plist is changed
 
-- name: Unload and remove LiteLLM launchd daemon
-  ansible.builtin.command: launchctl unload -w /Library/LaunchDaemons/com.litellm.proxy.plist
+- name: Ensure LiteLLM LaunchDaemon is running (kickstart)
+  ansible.builtin.command: launchctl kickstart system/com.litellm.proxy
+  become: true
+  failed_when: false
+  changed_when: false
+  when:
+    - litellm_state == "present"
+    - litellm_plist is not changed
+
+- name: Unload and remove LiteLLM LaunchDaemon
+  ansible.builtin.command: launchctl bootout system /Library/LaunchDaemons/com.litellm.proxy.plist
   become: true
   failed_when: false
   changed_when: true
   when: litellm_state == "absent"
 
-- name: Remove LiteLLM launchd plist
+- name: Remove LiteLLM plist, wrapper, and config
   ansible.builtin.file:
-    path: /Library/LaunchDaemons/com.litellm.proxy.plist
+    path: "{{ item }}"
     state: absent
   become: true
+  loop:
+    - /Library/LaunchDaemons/com.litellm.proxy.plist
+    - /usr/local/bin/litellm-serve
+    - "{{ litellm_config_dest | dirname }}"
   when: litellm_state == "absent"
