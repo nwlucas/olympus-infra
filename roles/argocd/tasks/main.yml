@@ -122,9 +122,6 @@
   changed_when: false
   delegate_to: localhost
   become: false
-  environment:
-    OP_CONNECT_HOST: "{{ onepassword_connect_host | default('') }}"
-    OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token | default('') }}"
   when:
     - _argocd_state == 'present'
     - argocd_kubeconfig_1password_item != ""
@@ -155,24 +152,10 @@
   become: false
   no_log: true
   changed_when: true
-  ignore_errors: true
-  register: _op_create_result
-  environment:
-    OP_CONNECT_HOST: "{{ onepassword_connect_host | default('') }}"
-    OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token | default('') }}"
   when:
     - _argocd_state == 'present'
     - argocd_kubeconfig_1password_item != ""
     - _op_kubeconfig_check.rc != 0
-
-- name: Warn if kubeconfig upload failed (retry after ArgoCD syncs connect-ingress)
-  ansible.builtin.debug:
-    msg: >
-      WARNING: kubeconfig upload to 1Password failed — connect.nwlnexus.net not yet reachable.
-      Re-run with --tags argocd after ArgoCD syncs the connect-ingress app.
-  when:
-    - _op_create_result is defined
-    - _op_create_result.failed | default(false)
 
 - name: Update kubeconfig in 1Password (item exists)
   ansible.builtin.shell: |
@@ -186,10 +169,6 @@
   become: false
   no_log: true
   changed_when: true
-  ignore_errors: true
-  environment:
-    OP_CONNECT_HOST: "{{ onepassword_connect_host | default('') }}"
-    OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token | default('') }}"
   when:
     - _argocd_state == 'present'
     - argocd_kubeconfig_1password_item != ""
@@ -204,6 +183,49 @@
   when:
     - _argocd_state == 'present'
     - argocd_kubeconfig_1password_item != ""
+
+# --- ARGOCD KUSTOMIZE HELM SUPPORT ---
+# Enable kustomize helmCharts support (required for kustomization.yaml with helmCharts: entries)
+- name: Enable kustomize --enable-helm in ArgoCD ConfigMap
+  ansible.builtin.shell: |
+    set -o pipefail
+    kubectl -n {{ argocd_namespace }} patch configmap argocd-cm \
+      --type merge \
+      -p '{"data":{"kustomize.buildOptions":"--enable-helm"}}'
+  args:
+    executable: /bin/bash
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: true
+  register: _argocd_cm_patch
+  when:
+    - _argocd_state == 'present'
+    - argocd_create_local_apps | bool
+
+- name: Restart ArgoCD repo-server to pick up kustomize build options
+  ansible.builtin.command: >
+    kubectl rollout restart deployment/argocd-repo-server -n {{ argocd_namespace }}
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_create_local_apps | bool
+    - _argocd_cm_patch.changed
+
+- name: Wait for ArgoCD repo-server restart
+  ansible.builtin.command: >
+    kubectl rollout status deployment/argocd-repo-server -n {{ argocd_namespace }} --timeout=60s
+  become: true
+  environment:
+    KUBECONFIG: "{{ k3s_kubeconfig_path }}"
+  changed_when: false
+  when:
+    - _argocd_state == 'present'
+    - argocd_create_local_apps | bool
+    - _argocd_cm_patch.changed
 
 # --- LOCAL CLUSTER APP CREATION ---
 # Creates ArgoCD Applications pointing to the local cluster (https://kubernetes.default.svc).
