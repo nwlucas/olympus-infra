@@ -243,9 +243,10 @@
     - ansible_os_family != 'Darwin'
 
 - name: Enable and start ddclient (macOS)
-  community.general.homebrew_service:
-    name: ddclient
-    state: started
+  ansible.builtin.command: brew services start ddclient
+  register: _ddclient_brew_start
+  changed_when: "'Successfully started' in _ddclient_brew_start.stdout"
+  failed_when: _ddclient_brew_start.rc != 0 and 'already started' not in _ddclient_brew_start.stderr
   when:
     - _ddclient_state == 'present'
     - ansible_os_family == 'Darwin'
