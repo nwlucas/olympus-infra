@@ -245,6 +245,9 @@
 - name: Enable and start ddclient (macOS)
   ansible.builtin.command: brew services start ddclient
   become: true
+  environment:
+    HOMEBREW_NO_AUTO_UPDATE: "1"
+    HOMEBREW_NO_ANALYTICS: "1"
   register: _ddclient_brew_start
   changed_when: "'Successfully started' in _ddclient_brew_start.stdout"
   failed_when: _ddclient_brew_start.rc != 0 and 'already started' not in _ddclient_brew_start.stderr

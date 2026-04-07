@@ -10,6 +10,9 @@
 - name: Restart ddclient (macOS)
   ansible.builtin.command: brew services restart ddclient
   become: true
+  environment:
+    HOMEBREW_NO_AUTO_UPDATE: "1"
+    HOMEBREW_NO_ANALYTICS: "1"
   changed_when: true
   when: ansible_os_family == 'Darwin'
   listen: restart ddclient
