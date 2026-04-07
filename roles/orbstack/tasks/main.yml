@@ -59,6 +59,32 @@
     - orbstack_state == 'present'
     - _orb_running.rc == 0
 
+- name: Add Helm repos for CRD pre-installation
+  ansible.builtin.command: >
+    /opt/homebrew/bin/helm repo add {{ item.repo_name }} {{ item.repo_url }} --force-update
+  loop: "{{ orbstack_helm_crds }}"
+  changed_when: false
+  become: false
+  when:
+    - orbstack_state == 'present'
+    - _orb_running.rc == 0
+    - orbstack_helm_crds | length > 0
+
+- name: Pre-install Helm chart CRDs (kustomize helmCharts skips crds/ directory)
+  ansible.builtin.shell: >
+    /opt/homebrew/bin/helm show crds {{ item.chart }} --version {{ item.version }} |
+    kubectl --kubeconfig {{ ansible_env.HOME }}/.kube/config
+    --context {{ orbstack_k8s_context }}
+    apply --server-side -f -
+  loop: "{{ orbstack_helm_crds }}"
+  register: _helm_crds
+  changed_when: "'serverside-applied' in _helm_crds.stdout or 'configured' in _helm_crds.stdout"
+  become: false
+  when:
+    - orbstack_state == 'present'
+    - _orb_running.rc == 0
+    - orbstack_helm_crds | length > 0
+
 - name: Remove OrbStack
   community.general.homebrew:
     name: orbstack

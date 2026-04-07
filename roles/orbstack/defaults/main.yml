@@ -9,3 +9,13 @@ orbstack_k8s_timeout: 180
 orbstack_k8s_api_proxy_state: absent    # set to 'present' in host_vars to enable
 orbstack_k8s_api_proxy_port: 6443       # port to listen on (all interfaces)
 orbstack_k8s_api_local_port: 26443      # OrbStack k8s API local port
+
+# Helm chart CRDs to pre-install into the OrbStack k8s cluster.
+# kustomize helmCharts (and `helm template`) skip a chart's crds/ directory,
+# so any chart that ships CRDs there must be listed here to avoid ArgoCD
+# sync failures and dependent controllers (e.g. external-dns) crashing.
+orbstack_helm_crds:
+  - repo_name: traefik
+    repo_url: https://traefik.github.io/charts
+    chart: traefik/traefik
+    version: "39.0.7"
