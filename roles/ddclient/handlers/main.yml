@@ -1,6 +1,15 @@
 ---
-- name: restart ddclient
+- name: Restart ddclient (Linux)
   ansible.builtin.systemd:
     name: ddclient
     state: restarted
   become: true
+  when: ansible_os_family != 'Darwin'
+  listen: restart ddclient
+
+- name: Restart ddclient (macOS)
+  community.general.homebrew_service:
+    name: ddclient
+    state: restarted
+  when: ansible_os_family == 'Darwin'
+  listen: restart ddclient

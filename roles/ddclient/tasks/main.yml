@@ -3,20 +3,34 @@
   ansible.builtin.set_fact:
     _ddclient_state: "{{ ddclient_state | default('present') }}"
 
+- name: Set platform-specific config path
+  ansible.builtin.set_fact:
+    _ddclient_conf_path: "{{ '/opt/homebrew/etc/ddclient.conf' if ansible_os_family == 'Darwin' else '/etc/ddclient.conf' }}"
+
 # --- ABSENT ---
-- name: Remove ddclient
+- name: Remove ddclient (Linux)
   ansible.builtin.apt:
     name: ddclient
     state: absent
     purge: true
   become: true
-  when: _ddclient_state == 'absent'
+  when:
+    - _ddclient_state == 'absent'
+    - ansible_os_family != 'Darwin'
+
+- name: Remove ddclient (macOS)
+  community.general.homebrew:
+    name: ddclient
+    state: absent
+  when:
+    - _ddclient_state == 'absent'
+    - ansible_os_family == 'Darwin'
 
 - name: Remove ddclient config
   ansible.builtin.file:
-    path: /etc/ddclient.conf
+    path: "{{ _ddclient_conf_path }}"
     state: absent
-  become: true
+  become: "{{ ansible_os_family != 'Darwin' }}"
   when: _ddclient_state == 'absent'
 
 # --- PRESENT ---
@@ -77,13 +91,23 @@
     gather_subset: [network]
   when: _ddclient_state == 'present'
 
-- name: Install ddclient
+- name: Install ddclient (Linux)
   ansible.builtin.apt:
     name: ddclient
     state: present
     update_cache: true
   become: true
-  when: _ddclient_state == 'present'
+  when:
+    - _ddclient_state == 'present'
+    - ansible_os_family != 'Darwin'
+
+- name: Install ddclient (macOS)
+  community.general.homebrew:
+    name: ddclient
+    state: present
+  when:
+    - _ddclient_state == 'present'
+    - ansible_os_family == 'Darwin'
 
 # Look up zone ID once for all record operations
 - name: Look up Cloudflare zone ID
@@ -116,7 +140,9 @@
 - name: Check existing public A record
   ansible.builtin.uri:
     url: >-
-      https://api.cloudflare.com/client/v4/zones/{{ _ddclient_zone_id }}/dns_records?type=A&name={{ ansible_hostname }}.{{ ddclient_subdomain }}.{{ ddclient_zone }}
+      https://api.cloudflare.com/client/v4/zones/{{ _ddclient_zone_id
+      }}/dns_records?type=A&name={{ ansible_hostname
+      }}.{{ ddclient_subdomain }}.{{ ddclient_zone }}
     method: GET
     headers:
       Authorization: "Bearer {{ _ddclient_cf_token }}"
@@ -181,21 +207,45 @@
 
 # --- ddclient config ---
 
-- name: Render ddclient.conf
+- name: Render ddclient.conf (Linux)
   ansible.builtin.template:
     src: ddclient.conf.j2
-    dest: /etc/ddclient.conf
+    dest: "{{ _ddclient_conf_path }}"
     owner: root
     group: root
     mode: '0600'
   become: true
   notify: restart ddclient
-  when: _ddclient_state == 'present'
+  when:
+    - _ddclient_state == 'present'
+    - ansible_os_family != 'Darwin'
 
-- name: Enable and start ddclient
+- name: Render ddclient.conf (macOS)
+  ansible.builtin.template:
+    src: ddclient.conf.j2
+    dest: "{{ _ddclient_conf_path }}"
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_gid }}"
+    mode: '0600'
+  notify: restart ddclient
+  when:
+    - _ddclient_state == 'present'
+    - ansible_os_family == 'Darwin'
+
+- name: Enable and start ddclient (Linux)
   ansible.builtin.systemd:
     name: ddclient
     enabled: true
     state: started
   become: true
-  when: _ddclient_state == 'present'
+  when:
+    - _ddclient_state == 'present'
+    - ansible_os_family != 'Darwin'
+
+- name: Enable and start ddclient (macOS)
+  community.general.homebrew_service:
+    name: ddclient
+    state: started
+  when:
+    - _ddclient_state == 'present'
+    - ansible_os_family == 'Darwin'
