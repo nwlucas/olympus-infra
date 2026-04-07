@@ -161,19 +161,8 @@
     - argocd_kubeconfig_1password_item != ""
     - k3s_external_server | default('') == ''
 
-- name: Check if kubeconfig already exists in 1Password
-  ansible.builtin.command: >
-    /opt/homebrew/bin/op item get "{{ argocd_kubeconfig_1password_item }}"
-    --vault {{ argocd_kubeconfig_1password_vault }}
-    --fields label=kubeconfig
-  register: _op_kubeconfig_check
-  failed_when: false
-  changed_when: false
-  delegate_to: localhost
-  become: false
-  when:
-    - _argocd_state == 'present'
-    - argocd_kubeconfig_1password_item != ""
+# Store kubeconfig as a 1Password Document (handles multiline content reliably).
+# op document create/edit avoids shell-escaping issues with $(cat ...) substitution.
 
 - name: Write kubeconfig to temp file on localhost
   ansible.builtin.copy:
@@ -187,21 +176,31 @@
     - _argocd_state == 'present'
     - argocd_kubeconfig_1password_item != ""
 
-- name: Create kubeconfig item in 1Password
-  ansible.builtin.shell: |
-    set -o pipefail
-    /opt/homebrew/bin/op item create \
-      --category=Login \
-      --title="{{ argocd_kubeconfig_1password_item }}" \
-      --vault={{ argocd_kubeconfig_1password_vault }} \
-      "kubeconfig[password]=$(cat /tmp/{{ argocd_kubeconfig_1password_item }}.yaml)"
-  args:
-    executable: /bin/bash
+- name: Check if kubeconfig document already exists in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document get "{{ argocd_kubeconfig_1password_item }}"
+    --vault {{ argocd_kubeconfig_1password_vault }}
+  register: _op_kubeconfig_check
+  failed_when: false
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - _argocd_state == 'present'
+    - argocd_kubeconfig_1password_item != ""
+
+- name: Create kubeconfig document in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document create /tmp/{{ argocd_kubeconfig_1password_item }}.yaml
+    --title "{{ argocd_kubeconfig_1password_item }}"
+    --vault {{ argocd_kubeconfig_1password_vault }}
+    --file-name kubeconfig
   delegate_to: localhost
   become: false
   no_log: true
   changed_when: true
-  ignore_errors: true
   environment:
     OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
   when:
@@ -209,19 +208,16 @@
     - argocd_kubeconfig_1password_item != ""
     - _op_kubeconfig_check.rc != 0
 
-- name: Update kubeconfig in 1Password (item exists)
-  ansible.builtin.shell: |
-    set -o pipefail
-    /opt/homebrew/bin/op item edit "{{ argocd_kubeconfig_1password_item }}" \
-      --vault={{ argocd_kubeconfig_1password_vault }} \
-      "kubeconfig[password]=$(cat /tmp/{{ argocd_kubeconfig_1password_item }}.yaml)"
-  args:
-    executable: /bin/bash
+- name: Update kubeconfig document in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document edit "{{ argocd_kubeconfig_1password_item }}"
+    /tmp/{{ argocd_kubeconfig_1password_item }}.yaml
+    --vault {{ argocd_kubeconfig_1password_vault }}
+    --file-name kubeconfig
   delegate_to: localhost
   become: false
   no_log: true
   changed_when: true
-  ignore_errors: true
   environment:
     OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
   when:
