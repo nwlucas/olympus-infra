@@ -141,7 +141,50 @@
 # When cloudflared_bootstrap_only: true, ArgoCD deploys the Deployment.
 # Ansible only: creates tunnel, seeds token secret, configures catch-all ingress.
 
-- name: Configure catch-all tunnel ingress (bootstrap-only mode)
+# --- IDEMPOTENT catch-all: GET current config, only PUT if catch-all is missing or wrong ---
+# Preserves any hostname-specific routes added via the Cloudflare dashboard.
+
+- name: Get current tunnel ingress configuration
+  ansible.builtin.uri:
+    url: "https://api.cloudflare.com/client/v4/accounts/{{ cloudflared_account_id }}/cfd_tunnel/{{ cloudflared_tunnel_id }}/configurations"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ cf_token }}"
+    status_code: 200
+  register: _cf_current_config
+  no_log: true
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_bootstrap_only | bool
+    - cloudflared_catch_all_service != ""
+
+- name: Extract current catch-all and hostname rules
+  ansible.builtin.set_fact:
+    _cf_current_catchall: >-
+      {{ (_cf_current_config.json.result.config.ingress | default([]))
+         | rejectattr('hostname', 'defined') | list | first | default({}) }}
+    _cf_hostname_rules: >-
+      {{ (_cf_current_config.json.result.config.ingress | default([]))
+         | selectattr('hostname', 'defined') | list }}
+  no_log: true
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_bootstrap_only | bool
+    - cloudflared_catch_all_service != ""
+
+- name: Set expected catch-all rule
+  ansible.builtin.set_fact:
+    _cf_expected_catchall:
+      service: "{{ cloudflared_catch_all_service }}"
+      originRequest:
+        http2Origin: true
+        noTLSVerify: true
+  when:
+    - _cf_k8s_state == 'present'
+    - cloudflared_bootstrap_only | bool
+    - cloudflared_catch_all_service != ""
+
+- name: Update tunnel catch-all (missing or changed — preserves all hostname routes)
   ansible.builtin.uri:
     url: "https://api.cloudflare.com/client/v4/accounts/{{ cloudflared_account_id }}/cfd_tunnel/{{ cloudflared_tunnel_id }}/configurations"
     method: PUT
@@ -151,17 +194,14 @@
     body_format: json
     body:
       config:
-        ingress:
-          - service: "{{ cloudflared_catch_all_service }}"
-            originRequest:
-              http2Origin: true
-              noTLSVerify: true
+        ingress: "{{ _cf_hostname_rules + [_cf_expected_catchall] }}"
     status_code: 200
   no_log: true
   when:
     - _cf_k8s_state == 'present'
     - cloudflared_bootstrap_only | bool
     - cloudflared_catch_all_service != ""
+    - _cf_current_catchall != _cf_expected_catchall
 
 - name: Look up zone ID for ingress CNAME (bootstrap-only mode)
   ansible.builtin.uri:
