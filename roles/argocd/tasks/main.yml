@@ -239,17 +239,22 @@
 # Same as above but patches server URL to the Tailscale MagicDNS FQDN.
 # Useful for connecting directly over Tailscale without going through public DNS.
 
+- name: Resolve tailnet server (explicit var or dynamic fact from k3s role)
+  ansible.builtin.set_fact:
+    _resolved_tailnet_server: "{{ argocd_tailnet_server | default(k3s_tailscale_fqdn | default('')) }}"
+  when: _argocd_state == 'present'
+
 - name: Patch kubeconfig server URL for tailnet distribution
   ansible.builtin.set_fact:
     _tailnet_kubeconfig_for_upload: >-
       {{ (_remote_kubeconfig.content | b64decode)
          | regex_replace('server: https://127\.0\.0\.1:6443',
-                         'server: https://' + argocd_tailnet_server + ':6443') }}
+                         'server: https://' + _resolved_tailnet_server + ':6443') }}
   no_log: true
   when:
     - _argocd_state == 'present'
     - argocd_tailnet_kubeconfig_1password_item | default('') != ''
-    - argocd_tailnet_server | default('') != ''
+    - _resolved_tailnet_server | default('') != ''
 
 - name: Write tailnet kubeconfig to temp file on localhost
   ansible.builtin.copy:
@@ -262,7 +267,7 @@
   when:
     - _argocd_state == 'present'
     - argocd_tailnet_kubeconfig_1password_item | default('') != ''
-    - argocd_tailnet_server | default('') != ''
+    - _resolved_tailnet_server | default('') != ''
 
 - name: Check if tailnet kubeconfig document already exists in 1Password
   ansible.builtin.command: >
@@ -294,7 +299,7 @@
   when:
     - _argocd_state == 'present'
     - argocd_tailnet_kubeconfig_1password_item | default('') != ''
-    - argocd_tailnet_server | default('') != ''
+    - _resolved_tailnet_server | default('') != ''
     - _op_tailnet_kubeconfig_check.rc != 0
 
 - name: Update tailnet kubeconfig document in 1Password
@@ -312,7 +317,7 @@
   when:
     - _argocd_state == 'present'
     - argocd_tailnet_kubeconfig_1password_item | default('') != ''
-    - argocd_tailnet_server | default('') != ''
+    - _resolved_tailnet_server | default('') != ''
     - _op_tailnet_kubeconfig_check.rc == 0
 
 - name: Remove temp tailnet kubeconfig file from localhost
@@ -325,14 +330,18 @@
     - _argocd_state == 'present'
     - argocd_tailnet_kubeconfig_1password_item | default('') != ''
 
-# --- ARGOCD KUSTOMIZE HELM SUPPORT ---
-# Enable kustomize helmCharts support (required for kustomization.yaml with helmCharts: entries)
-- name: Enable kustomize --enable-helm in ArgoCD ConfigMap
+# --- ARGOCD KUSTOMIZE / HELM / OCI SUPPORT ---
+# argocd-cm:   kustomize --enable-helm (render helmCharts entries in kustomization.yaml)
+# argocd-cmd-params-cm: helm.enableOci (allow OCI Helm repos as direct chart sources)
+- name: Patch ArgoCD ConfigMap — kustomize + Helm + OCI
   ansible.builtin.shell: |
     set -o pipefail
     kubectl -n {{ argocd_namespace }} patch configmap argocd-cm \
       --type merge \
       -p '{"data":{"kustomize.buildOptions":"--enable-helm"}}'
+    kubectl -n {{ argocd_namespace }} patch configmap argocd-cmd-params-cm \
+      --type merge \
+      -p '{"data":{"helm.enabled":"true","helm.enableOci":"true"}}'
   args:
     executable: /bin/bash
   become: true
@@ -344,7 +353,7 @@
     - _argocd_state == 'present'
     - argocd_create_local_apps | bool
 
-- name: Restart ArgoCD repo-server to pick up kustomize build options
+- name: Restart ArgoCD repo-server to pick up config changes
   ansible.builtin.command: >
     kubectl rollout restart deployment/argocd-repo-server -n {{ argocd_namespace }}
   become: true

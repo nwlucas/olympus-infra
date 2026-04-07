@@ -10,6 +10,37 @@
   become: true
   when: _k3s_state == 'present'
 
+- name: Query Tailscale status for dynamic SAN injection
+  ansible.builtin.command: tailscale status --json
+  register: _tailscale_status_raw
+  failed_when: false
+  changed_when: false
+  become: false
+  when: _k3s_state == 'present'
+
+- name: Extract Tailscale IPv4 and MagicDNS FQDN
+  ansible.builtin.set_fact:
+    _tailscale_ipv4: >-
+      {{ (_tailscale_status_raw.stdout | from_json).Self.TailscaleIPs
+         | select('match', '^[0-9]') | first | default('') }}
+    k3s_tailscale_fqdn: >-
+      {{ (_tailscale_status_raw.stdout | from_json).Self.DNSName
+         | regex_replace('\\.+$', '') | default('') }}
+  when:
+    - _k3s_state == 'present'
+    - _tailscale_status_raw.rc | default(1) == 0
+    - _tailscale_status_raw.stdout | default('') != ''
+
+- name: Append Tailscale IP and FQDN to k3s_tls_san
+  ansible.builtin.set_fact:
+    k3s_tls_san: >-
+      {{ (k3s_tls_san | default([]))
+         | union([_tailscale_ipv4 | default(''), k3s_tailscale_fqdn | default('')])
+         | reject('eq', '') | list }}
+  when:
+    - _k3s_state == 'present'
+    - _tailscale_ipv4 | default('') != ''
+
 - name: Build k3s config content
   ansible.builtin.set_fact:
     _k3s_config: |
