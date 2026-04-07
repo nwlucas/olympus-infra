@@ -16,3 +16,29 @@ flux_github_token: ""
 flux_kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
 # Optional kubeconfig context name — leave empty for default context in the kubeconfig
 flux_kubeconfig_context: ""
+
+# --- KUBECONFIG EXPORT TO 1PASSWORD ---
+# Reads kubeconfig from the remote host, patches the server URL, and uploads as a
+# 1Password document. Mirrors what the argocd role does for management-hub.
+# Set flux_kubeconfig_1password_item to enable; leave empty to skip.
+flux_kubeconfig_1password_item: ""
+flux_kubeconfig_1password_vault: "Dev"
+# Patch internal server URL (127.0.0.1:*) to this host for remote kubectl access.
+# If empty, Tailscale IPv4 is auto-resolved from `tailscale status --json`.
+flux_kubeconfig_external_server: ""
+# Port to use in the patched kubeconfig. 26443 = OrbStack native k8s API port.
+flux_kubeconfig_external_port: 26443
+# Second kubeconfig with Tailscale MagicDNS FQDN as the server.
+# Set to a 1Password item name to enable; leave empty to skip.
+flux_tailnet_kubeconfig_1password_item: ""
+# Tailscale MagicDNS FQDN to use in the tailnet kubeconfig.
+# If empty, auto-resolved from `tailscale status --json`.
+flux_tailnet_server: ""
+
+# --- HEADLAMP ADMIN TOKEN ---
+# Generates a long-lived token for the Headlamp admin ServiceAccount and stores it
+# in 1Password so users can authenticate after Cloudflare Access.
+# Set flux_headlamp_token_1password_item to enable; leave empty to skip.
+flux_headlamp_token_1password_item: ""
+flux_headlamp_sa_name: "headlamp-admin"
+flux_headlamp_sa_namespace: "headlamp"

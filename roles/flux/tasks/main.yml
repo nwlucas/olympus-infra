@@ -57,6 +57,343 @@
     - flux_state == 'present'
     - flux_cluster_path != ''
 
+# --- KUBECONFIG EXPORT TO 1PASSWORD ---
+# Reads the kubeconfig from the remote host, patches the server URL from the
+# internal 127.0.0.1 address to the Tailscale IP (and FQDN), then uploads
+# both variants to 1Password as documents for remote kubectl access.
+
+- name: Query Tailscale status for kubeconfig server URL
+  ansible.builtin.command: tailscale status --json
+  register: _flux_ts_status
+  failed_when: false
+  changed_when: false
+  become: false
+  when:
+    - flux_state == 'present'
+    - flux_kubeconfig_1password_item | default('') != ''
+
+- name: Resolve Tailscale IPv4 and MagicDNS FQDN
+  ansible.builtin.set_fact:
+    _flux_ts_ipv4: >-
+      {{ (_flux_ts_status.stdout | from_json).Self.TailscaleIPs
+         | select('match', '^[0-9]') | first | default('') }}
+    _flux_ts_fqdn: >-
+      {{ (_flux_ts_status.stdout | from_json).Self.DNSName
+         | regex_replace('\\.+$', '') | default('') }}
+  when:
+    - flux_state == 'present'
+    - flux_kubeconfig_1password_item | default('') != ''
+    - _flux_ts_status.rc | default(1) == 0
+    - _flux_ts_status.stdout | default('') != ''
+
+- name: Set effective external server (explicit or Tailscale IPv4)
+  ansible.builtin.set_fact:
+    _flux_external_server: "{{ flux_kubeconfig_external_server | default(_flux_ts_ipv4 | default('')) }}"
+    _flux_tailnet_server: "{{ flux_tailnet_server | default(_flux_ts_fqdn | default('')) }}"
+  when:
+    - flux_state == 'present'
+    - flux_kubeconfig_1password_item | default('') != ''
+
+- name: Read kubeconfig from remote host
+  ansible.builtin.slurp:
+    src: "{{ flux_kubeconfig_path }}"
+  register: _flux_remote_kubeconfig
+  become: true
+  no_log: true
+  when:
+    - flux_state == 'present'
+    - flux_kubeconfig_1password_item | default('') != ''
+    - _flux_external_server | default('') != ''
+
+- name: Patch kubeconfig server URL for primary export
+  ansible.builtin.set_fact:
+    _flux_kubeconfig_primary: >-
+      {{ (_flux_remote_kubeconfig.content | b64decode)
+         | regex_replace('server: https://(?:127\.0\.0\.1|localhost):\d+',
+                         'server: https://' + _flux_external_server + ':' + (flux_kubeconfig_external_port | string)) }}
+  no_log: true
+  when:
+    - flux_state == 'present'
+    - flux_kubeconfig_1password_item | default('') != ''
+    - _flux_external_server | default('') != ''
+
+- name: Write primary kubeconfig to temp file on localhost
+  ansible.builtin.copy:
+    content: "{{ _flux_kubeconfig_primary }}"
+    dest: "/tmp/{{ flux_kubeconfig_1password_item }}.yaml"
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+  no_log: true
+  when:
+    - flux_state == 'present'
+    - flux_kubeconfig_1password_item | default('') != ''
+    - _flux_external_server | default('') != ''
+
+- name: Check if primary kubeconfig document exists in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document get "{{ flux_kubeconfig_1password_item }}"
+    --vault {{ flux_kubeconfig_1password_vault }}
+  register: _op_flux_kubeconfig_check
+  failed_when: false
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - flux_state == 'present'
+    - flux_kubeconfig_1password_item | default('') != ''
+    - _flux_external_server | default('') != ''
+
+- name: Create primary kubeconfig document in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document create /tmp/{{ flux_kubeconfig_1password_item }}.yaml
+    --title "{{ flux_kubeconfig_1password_item }}"
+    --vault {{ flux_kubeconfig_1password_vault }}
+    --file-name kubeconfig
+  delegate_to: localhost
+  become: false
+  no_log: true
+  changed_when: true
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - flux_state == 'present'
+    - flux_kubeconfig_1password_item | default('') != ''
+    - _flux_external_server | default('') != ''
+    - _op_flux_kubeconfig_check.rc != 0
+
+- name: Update primary kubeconfig document in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document edit "{{ flux_kubeconfig_1password_item }}"
+    /tmp/{{ flux_kubeconfig_1password_item }}.yaml
+    --vault {{ flux_kubeconfig_1password_vault }}
+    --file-name kubeconfig
+  delegate_to: localhost
+  become: false
+  no_log: true
+  changed_when: true
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - flux_state == 'present'
+    - flux_kubeconfig_1password_item | default('') != ''
+    - _flux_external_server | default('') != ''
+    - _op_flux_kubeconfig_check.rc == 0
+
+- name: Remove temp primary kubeconfig file
+  ansible.builtin.file:
+    path: "/tmp/{{ flux_kubeconfig_1password_item }}.yaml"
+    state: absent
+  delegate_to: localhost
+  become: false
+  when:
+    - flux_state == 'present'
+    - flux_kubeconfig_1password_item | default('') != ''
+
+# --- TAILNET KUBECONFIG ---
+
+- name: Patch kubeconfig server URL for tailnet export
+  ansible.builtin.set_fact:
+    _flux_kubeconfig_tailnet: >-
+      {{ (_flux_remote_kubeconfig.content | b64decode)
+         | regex_replace('server: https://(?:127\.0\.0\.1|localhost):\d+',
+                         'server: https://' + _flux_tailnet_server + ':' + (flux_kubeconfig_external_port | string)) }}
+  no_log: true
+  when:
+    - flux_state == 'present'
+    - flux_tailnet_kubeconfig_1password_item | default('') != ''
+    - _flux_tailnet_server | default('') != ''
+
+- name: Write tailnet kubeconfig to temp file on localhost
+  ansible.builtin.copy:
+    content: "{{ _flux_kubeconfig_tailnet }}"
+    dest: "/tmp/{{ flux_tailnet_kubeconfig_1password_item }}.yaml"
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+  no_log: true
+  when:
+    - flux_state == 'present'
+    - flux_tailnet_kubeconfig_1password_item | default('') != ''
+    - _flux_tailnet_server | default('') != ''
+
+- name: Check if tailnet kubeconfig document exists in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document get "{{ flux_tailnet_kubeconfig_1password_item }}"
+    --vault {{ flux_kubeconfig_1password_vault }}
+  register: _op_flux_tailnet_check
+  failed_when: false
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - flux_state == 'present'
+    - flux_tailnet_kubeconfig_1password_item | default('') != ''
+    - _flux_tailnet_server | default('') != ''
+
+- name: Create tailnet kubeconfig document in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document create /tmp/{{ flux_tailnet_kubeconfig_1password_item }}.yaml
+    --title "{{ flux_tailnet_kubeconfig_1password_item }}"
+    --vault {{ flux_kubeconfig_1password_vault }}
+    --file-name kubeconfig
+  delegate_to: localhost
+  become: false
+  no_log: true
+  changed_when: true
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - flux_state == 'present'
+    - flux_tailnet_kubeconfig_1password_item | default('') != ''
+    - _flux_tailnet_server | default('') != ''
+    - _op_flux_tailnet_check.rc != 0
+
+- name: Update tailnet kubeconfig document in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document edit "{{ flux_tailnet_kubeconfig_1password_item }}"
+    /tmp/{{ flux_tailnet_kubeconfig_1password_item }}.yaml
+    --vault {{ flux_kubeconfig_1password_vault }}
+    --file-name kubeconfig
+  delegate_to: localhost
+  become: false
+  no_log: true
+  changed_when: true
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - flux_state == 'present'
+    - flux_tailnet_kubeconfig_1password_item | default('') != ''
+    - _flux_tailnet_server | default('') != ''
+    - _op_flux_tailnet_check.rc == 0
+
+- name: Remove temp tailnet kubeconfig file
+  ansible.builtin.file:
+    path: "/tmp/{{ flux_tailnet_kubeconfig_1password_item }}.yaml"
+    state: absent
+  delegate_to: localhost
+  become: false
+  when:
+    - flux_state == 'present'
+    - flux_tailnet_kubeconfig_1password_item | default('') != ''
+
+# --- HEADLAMP ADMIN TOKEN ---
+# Generates a long-lived service account token for Headlamp and stores it in
+# 1Password. Users paste this token into Headlamp's login screen after passing
+# Cloudflare Access authentication.
+
+- name: Wait for Headlamp ServiceAccount to exist
+  ansible.builtin.command: >
+    kubectl get serviceaccount {{ flux_headlamp_sa_name }}
+    -n {{ flux_headlamp_sa_namespace }}
+    --kubeconfig={{ flux_kubeconfig_path }}
+    {% if flux_kubeconfig_context != '' %}--context={{ flux_kubeconfig_context }}{% endif %}
+  become: true
+  register: _headlamp_sa_check
+  until: _headlamp_sa_check.rc == 0
+  retries: 18
+  delay: 10
+  changed_when: false
+  failed_when: false
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_token_1password_item | default('') != ''
+
+- name: Generate Headlamp admin token (10-year lifetime)
+  ansible.builtin.command: >
+    kubectl create token {{ flux_headlamp_sa_name }}
+    -n {{ flux_headlamp_sa_namespace }}
+    --duration=87600h
+    --kubeconfig={{ flux_kubeconfig_path }}
+    {% if flux_kubeconfig_context != '' %}--context={{ flux_kubeconfig_context }}{% endif %}
+  become: true
+  register: _headlamp_token
+  changed_when: true
+  no_log: true
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_token_1password_item | default('') != ''
+    - _headlamp_sa_check.rc | default(1) == 0
+
+- name: Check if Headlamp token document exists in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document get "{{ flux_headlamp_token_1password_item }}"
+    --vault {{ flux_kubeconfig_1password_vault }}
+  register: _op_headlamp_token_check
+  failed_when: false
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_token_1password_item | default('') != ''
+    - _headlamp_sa_check.rc | default(1) == 0
+
+- name: Write Headlamp token to temp file on localhost
+  ansible.builtin.copy:
+    content: "{{ _headlamp_token.stdout }}"
+    dest: "/tmp/{{ flux_headlamp_token_1password_item }}.txt"
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+  no_log: true
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_token_1password_item | default('') != ''
+    - _headlamp_sa_check.rc | default(1) == 0
+
+- name: Create Headlamp token document in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document create /tmp/{{ flux_headlamp_token_1password_item }}.txt
+    --title "{{ flux_headlamp_token_1password_item }}"
+    --vault {{ flux_kubeconfig_1password_vault }}
+    --file-name token
+  delegate_to: localhost
+  become: false
+  no_log: true
+  changed_when: true
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_token_1password_item | default('') != ''
+    - _headlamp_sa_check.rc | default(1) == 0
+    - _op_headlamp_token_check.rc != 0
+
+- name: Update Headlamp token document in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document edit "{{ flux_headlamp_token_1password_item }}"
+    /tmp/{{ flux_headlamp_token_1password_item }}.txt
+    --vault {{ flux_kubeconfig_1password_vault }}
+    --file-name token
+  delegate_to: localhost
+  become: false
+  no_log: true
+  changed_when: true
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_token_1password_item | default('') != ''
+    - _headlamp_sa_check.rc | default(1) == 0
+    - _op_headlamp_token_check.rc == 0
+
+- name: Remove temp Headlamp token file
+  ansible.builtin.file:
+    path: "/tmp/{{ flux_headlamp_token_1password_item }}.txt"
+    state: absent
+  delegate_to: localhost
+  become: false
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_token_1password_item | default('') != ''
+
 # --- ABSENT ---
 
 - name: Uninstall Flux
