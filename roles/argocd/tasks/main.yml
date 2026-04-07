@@ -140,6 +140,27 @@
     - _argocd_state == 'present'
     - argocd_kubeconfig_1password_item != ""
 
+- name: Patch kubeconfig server URL for external distribution
+  ansible.builtin.set_fact:
+    _kubeconfig_for_upload: >-
+      {{ (_remote_kubeconfig.content | b64decode)
+         | regex_replace('server: https://127\.0\.0\.1:6443',
+                         'server: https://' + k3s_external_server + ':6443') }}
+  no_log: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_kubeconfig_1password_item != ""
+    - k3s_external_server | default('') != ''
+
+- name: Use raw kubeconfig if no external server configured
+  ansible.builtin.set_fact:
+    _kubeconfig_for_upload: "{{ _remote_kubeconfig.content | b64decode }}"
+  no_log: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_kubeconfig_1password_item != ""
+    - k3s_external_server | default('') == ''
+
 - name: Check if kubeconfig already exists in 1Password
   ansible.builtin.command: >
     /opt/homebrew/bin/op item get "{{ argocd_kubeconfig_1password_item }}"
@@ -156,7 +177,7 @@
 
 - name: Write kubeconfig to temp file on localhost
   ansible.builtin.copy:
-    content: "{{ _remote_kubeconfig.content | b64decode }}"
+    content: "{{ _kubeconfig_for_upload }}"
     dest: "/tmp/{{ argocd_kubeconfig_1password_item }}.yaml"
     mode: '0600'
   delegate_to: localhost

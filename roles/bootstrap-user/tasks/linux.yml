@@ -105,3 +105,16 @@
   when:
     - bootstrap_user_state == "present"
     - onepassword_credentials_json != ""
+
+- name: Write 1Password service account token from vault var
+  ansible.builtin.copy:
+    content: "{{ op_service_account_token }}"
+    dest: "{{ bootstrap_creds_dest }}/op-service-account-token"
+    owner: "{{ bootstrap_user_name }}"
+    group: "{{ bootstrap_user_name }}"
+    mode: "0600"
+  become: true
+  no_log: true
+  when:
+    - bootstrap_user_state == "present"
+    - op_service_account_token | default('') != ''

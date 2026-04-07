@@ -129,17 +129,9 @@
   become: true
   when: _k3s_state == 'present'
 
-# Patch server URL in system kubeconfig for external FQDN access
-- name: Patch kubeconfig server URL (system)
-  ansible.builtin.replace:
-    path: "{{ k3s_kubeconfig_path }}"
-    regexp: 'server: https://127\.0\.0\.1:6443'
-    replace: "server: https://{{ k3s_external_server }}:6443"
-  become: true
-  when:
-    - _k3s_state == 'present'
-    - k3s_external_server | default('') != ''
-
+# Patch server URL in user kubeconfig copies for external FQDN access.
+# The system kubeconfig (k3s_kubeconfig_path) is intentionally kept at 127.0.0.1
+# so on-host tools (kubectl, ArgoCD role, etc.) work without DNS resolution.
 - name: Patch kubeconfig server URL (user copies)
   ansible.builtin.replace:
     path: "/home/{{ item }}/.kube/config"
