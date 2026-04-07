@@ -88,8 +88,14 @@
 
 - name: Set effective external server (explicit or Tailscale IPv4)
   ansible.builtin.set_fact:
-    _flux_external_server: "{{ flux_kubeconfig_external_server | default(_flux_ts_ipv4 | default('')) }}"
-    _flux_tailnet_server: "{{ flux_tailnet_server | default(_flux_ts_fqdn | default('')) }}"
+    _flux_external_server: >-
+      {{ flux_kubeconfig_external_server
+         if (flux_kubeconfig_external_server | default('')) != ''
+         else (_flux_ts_ipv4 | default('')) }}
+    _flux_tailnet_server: >-
+      {{ flux_tailnet_server
+         if (flux_tailnet_server | default('')) != ''
+         else (_flux_ts_fqdn | default('')) }}
   when:
     - flux_state == 'present'
     - flux_kubeconfig_1password_item | default('') != ''
