@@ -129,6 +129,19 @@
   become: true
   when: _k3s_state == 'present'
 
+# Add FQDNs to /etc/hosts so the host can self-resolve its own names.
+# Needed when the local router doesn't forward nwlnexus.net queries to Cloudflare.
+- name: Add FQDN entries to /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ ansible_default_ipv4.address }} {{ item }}"
+    state: present
+  loop: "{{ k3s_tls_san | select('search', '\\.') | list }}"
+  become: true
+  when:
+    - _k3s_state == 'present'
+    - k3s_tls_san | default([]) | length > 0
+
 # Patch server URL in user kubeconfig copies for external FQDN access.
 # The system kubeconfig (k3s_kubeconfig_path) is intentionally kept at 127.0.0.1
 # so on-host tools (kubectl, ArgoCD role, etc.) work without DNS resolution.
