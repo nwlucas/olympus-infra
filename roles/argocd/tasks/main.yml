@@ -235,6 +235,96 @@
     - _argocd_state == 'present'
     - argocd_kubeconfig_1password_item != ""
 
+# --- TAILNET KUBECONFIG UPLOAD TO 1PASSWORD ---
+# Same as above but patches server URL to the Tailscale MagicDNS FQDN.
+# Useful for connecting directly over Tailscale without going through public DNS.
+
+- name: Patch kubeconfig server URL for tailnet distribution
+  ansible.builtin.set_fact:
+    _tailnet_kubeconfig_for_upload: >-
+      {{ (_remote_kubeconfig.content | b64decode)
+         | regex_replace('server: https://127\.0\.0\.1:6443',
+                         'server: https://' + argocd_tailnet_server + ':6443') }}
+  no_log: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_tailnet_kubeconfig_1password_item | default('') != ''
+    - argocd_tailnet_server | default('') != ''
+
+- name: Write tailnet kubeconfig to temp file on localhost
+  ansible.builtin.copy:
+    content: "{{ _tailnet_kubeconfig_for_upload }}"
+    dest: "/tmp/{{ argocd_tailnet_kubeconfig_1password_item }}.yaml"
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+  no_log: true
+  when:
+    - _argocd_state == 'present'
+    - argocd_tailnet_kubeconfig_1password_item | default('') != ''
+    - argocd_tailnet_server | default('') != ''
+
+- name: Check if tailnet kubeconfig document already exists in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document get "{{ argocd_tailnet_kubeconfig_1password_item }}"
+    --vault {{ argocd_kubeconfig_1password_vault | default('Dev') }}
+  register: _op_tailnet_kubeconfig_check
+  failed_when: false
+  changed_when: false
+  delegate_to: localhost
+  become: false
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - _argocd_state == 'present'
+    - argocd_tailnet_kubeconfig_1password_item | default('') != ''
+
+- name: Create tailnet kubeconfig document in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document create /tmp/{{ argocd_tailnet_kubeconfig_1password_item }}.yaml
+    --title "{{ argocd_tailnet_kubeconfig_1password_item }}"
+    --vault {{ argocd_kubeconfig_1password_vault | default('Dev') }}
+    --file-name kubeconfig
+  delegate_to: localhost
+  become: false
+  no_log: true
+  changed_when: true
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - _argocd_state == 'present'
+    - argocd_tailnet_kubeconfig_1password_item | default('') != ''
+    - argocd_tailnet_server | default('') != ''
+    - _op_tailnet_kubeconfig_check.rc != 0
+
+- name: Update tailnet kubeconfig document in 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document edit "{{ argocd_tailnet_kubeconfig_1password_item }}"
+    /tmp/{{ argocd_tailnet_kubeconfig_1password_item }}.yaml
+    --vault {{ argocd_kubeconfig_1password_vault | default('Dev') }}
+    --file-name kubeconfig
+  delegate_to: localhost
+  become: false
+  no_log: true
+  changed_when: true
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - _argocd_state == 'present'
+    - argocd_tailnet_kubeconfig_1password_item | default('') != ''
+    - argocd_tailnet_server | default('') != ''
+    - _op_tailnet_kubeconfig_check.rc == 0
+
+- name: Remove temp tailnet kubeconfig file from localhost
+  ansible.builtin.file:
+    path: "/tmp/{{ argocd_tailnet_kubeconfig_1password_item }}.yaml"
+    state: absent
+  delegate_to: localhost
+  become: false
+  when:
+    - _argocd_state == 'present'
+    - argocd_tailnet_kubeconfig_1password_item | default('') != ''
+
 # --- ARGOCD KUSTOMIZE HELM SUPPORT ---
 # Enable kustomize helmCharts support (required for kustomization.yaml with helmCharts: entries)
 - name: Enable kustomize --enable-helm in ArgoCD ConfigMap

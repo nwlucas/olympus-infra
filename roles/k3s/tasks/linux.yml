@@ -136,7 +136,7 @@
     path: /etc/hosts
     line: "{{ ansible_default_ipv4.address }} {{ item }}"
     state: present
-  loop: "{{ k3s_tls_san | select('search', '\\.') | list }}"
+  loop: "{{ k3s_tls_san | select('search', '\\.') | reject('match', '^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$') | list }}"
   become: true
   when:
     - _k3s_state == 'present'
