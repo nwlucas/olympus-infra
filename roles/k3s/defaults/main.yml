@@ -6,6 +6,12 @@ k3s_kubeconfig_path: /etc/rancher/k3s/k3s.yaml
 k3s_kubeconfig_users:
   - nwilliams-lucas
   - ansible
+# Extra SANs added to the k3s API server TLS cert.
+# Allows remote kubectl access via FQDN without TLS errors (k3s CA already in kubeconfig).
+k3s_tls_san: []
+# If set, patches kubeconfig server URL from 127.0.0.1:6443 to this FQDN.
+# Should match one of the entries in k3s_tls_san.
+k3s_external_server: ""
 # Colima (macOS) settings — used by darwin.yml in Phase 3
 colima_profile: olympus
 colima_runtime: k3s

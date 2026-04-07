@@ -1,0 +1,13 @@
+---
+ddclient_state: present
+ddclient_zone: "nwlnexus.net"
+ddclient_subdomain: "edge"          # public record: <hostname>.<subdomain>.<zone>
+ddclient_ttl: 120
+ddclient_daemon_interval: 300
+# 1Password reference for Cloudflare DNS-only API token (for pull-mode via op read)
+ddclient_cf_token_op_ref: "op://Dev/dns-only-cf-token/credential"
+# Cloudflare API token override (for push-mode via vault; takes precedence over op_ref)
+ddclient_cf_api_token: ""
+# Optional extra FQDNs that also point to this host's internal IP.
+# e.g. role-based names like management-hub.nwlnexus.net alongside naraka-01.nwlnexus.net
+ddclient_extra_fqdns: []
