@@ -9,6 +9,7 @@
 
 - name: Restart ddclient (macOS)
   ansible.builtin.command: brew services restart ddclient
+  become: true
   changed_when: true
   when: ansible_os_family == 'Darwin'
   listen: restart ddclient
