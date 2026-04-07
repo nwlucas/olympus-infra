@@ -33,5 +33,9 @@ argocd_create_local_apps: false
 # Requires op CLI and OP_CONNECT_HOST / OP_CONNECT_TOKEN in environment.
 argocd_kubeconfig_1password_item: ""
 argocd_kubeconfig_1password_vault: "Dev"
+# Labels applied to all ArgoCD Applications created by this role.
+# cluster label identifies which cluster the app targets.
+# app label is derived automatically from the path basename.
+argocd_cluster_label: ""
 # Public hostname for Traefik IngressRoute (set in host_vars to enable)
 argocd_hostname: ""

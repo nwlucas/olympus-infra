@@ -330,6 +330,8 @@
     --sync-option CreateNamespace=true
     --sync-option ServerSideApply=true
     --annotations "argocd.argoproj.io/sync-wave={{ item.sync_wave | default('0') }}"
+    {% if argocd_cluster_label != '' %}--label "cluster={{ argocd_cluster_label }}"{% endif %}
+    --label "app={{ item.path.split('/')[-1] }}"
     --upsert
   loop: "{{ argocd_apps }}"
   register: _argocd_local_app_create
@@ -490,6 +492,8 @@
     --self-heal
     --sync-option CreateNamespace=true
     --annotations "argocd.argoproj.io/sync-wave={{ item.sync_wave | default('0') }}"
+    {% if argocd_cluster_label != '' %}--label "cluster={{ argocd_cluster_label }}"{% endif %}
+    --label "app={{ item.path.split('/')[-1] }}"
     --upsert
   loop: "{{ argocd_apps }}"
   register: _argocd_app_create
