@@ -160,18 +160,20 @@
     - tailscale_state == "present"
     - tailscale_is_running
 
-# tailscale set does not support --advertise-tags. Compare current vs desired
-# tags and re-authenticate with a new auth key only when they differ.
+# tailscale set does not support --advertise-tags. Use the Tailscale API to
+# update ACL tags in-place — no re-auth, no IP change, no service interruption.
+# Requires OAuth client to have devices:write scope (Settings → Trust credentials).
 - name: Check if ACL tags need updating
   ansible.builtin.set_fact:
     ts_tags_current: "{{ (ts_status.stdout | from_json).Self.Tags | default([]) | sort }}"
     ts_tags_desired: "{{ tailscale_tags | default([]) | sort }}"
+    ts_device_id: "{{ (ts_status.stdout | from_json).Self.ID }}"
   when:
     - tailscale_state == "present"
     - tailscale_is_running
     - ts_status.rc == 0
 
-- name: Get OAuth token for tag re-auth
+- name: Get OAuth token for tag update
   ansible.builtin.uri:
     url: https://api.tailscale.com/api/v2/oauth/token
     method: POST
@@ -190,78 +192,23 @@
     - tailscale_oauth_client_id != ""
     - tailscale_oauth_client_secret != ""
 
-- name: Create auth key for tag update
+- name: Update device ACL tags via Tailscale API
   ansible.builtin.uri:
-    url: https://api.tailscale.com/api/v2/tailnet/-/keys
+    url: "https://api.tailscale.com/api/v2/device/{{ ts_device_id }}/tags"
     method: POST
     headers:
       Authorization: "Bearer {{ ts_oauth_tags.json.access_token }}"
       Content-Type: application/json
     body_format: json
     body:
-      capabilities:
-        devices:
-          create:
-            reusable: false
-            ephemeral: true
-            preauthorized: true
-            tags: "{{ tailscale_tags }}"
-      expirySeconds: 300
+      tags: "{{ tailscale_tags }}"
     status_code: 200
-  register: ts_tag_key
-  no_log: true
-  # 400 means one or more tags are not yet defined in the tailnet ACL tagOwners.
-  # Fail gracefully so other settings (routes, SSH) are still applied.
-  failed_when: false
+  changed_when: true
   when:
     - tailscale_state == "present"
     - tailscale_is_running
     - ts_tags_current != ts_tags_desired
     - ts_oauth_tags is defined and ts_oauth_tags.status == 200
-
-- name: Warn if tag key creation failed (tags not defined in ACL tagOwners)
-  ansible.builtin.debug:
-    msg: >
-      WARNING: Could not create auth key for tags {{ tailscale_tags }}
-      (HTTP {{ ts_tag_key.status | default('?') }}: {{ ts_tag_key.json.message | default(ts_tag_key.msg | default('unknown error')) }}).
-      Ensure all tags are defined in your tailnet ACL tagOwners before re-running.
-  when:
-    - tailscale_state == "present"
-    - tailscale_is_running
-    - ts_tags_current != ts_tags_desired
-    - ts_tag_key is defined and ts_tag_key.status is defined and ts_tag_key.status != 200
-
-- name: Re-authenticate to apply updated ACL tags
-  ansible.builtin.command:
-    argv: >-
-      {{ ['tailscale', 'up',
-          '--authkey=' + ts_tag_key.json.key,
-          '--force-reauth',
-          '--accept-risk=all',
-          '--hostname=' + tailscale_hostname]
-         + _ts_tags_argv
-         + _ts_routes_argv
-         + (['--accept-routes'] if tailscale_accept_routes else [])
-         + (['--advertise-exit-node'] if tailscale_advertise_exit_node else [])
-         + (['--ssh'] if 'ssh' in (tailscale_services | default([])) else []) }}
-  become: true
-  register: ts_reauth_result
-  no_log: true
-  changed_when: ts_reauth_result.rc == 0
-  failed_when: ts_reauth_result.rc != 0
-  when:
-    - tailscale_state == "present"
-    - tailscale_is_running
-    - ts_tags_current != ts_tags_desired
-    - ts_tag_key is defined and ts_tag_key.status == 200
-
-- name: Debug re-auth failure (stderr only — key is not shown)
-  ansible.builtin.debug:
-    msg: "tailscale up rc={{ ts_reauth_result.rc }} stderr={{ ts_reauth_result.stderr }}"
-  when:
-    - ts_reauth_result is defined
-    - ts_reauth_result.rc is defined
-    - ts_reauth_result.rc != 0
 
 - name: Tailscale already connected — skip join
   ansible.builtin.debug:
