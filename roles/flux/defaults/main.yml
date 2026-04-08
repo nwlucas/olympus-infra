@@ -42,3 +42,14 @@ flux_tailnet_server: ""
 flux_headlamp_token_1password_item: ""
 flux_headlamp_sa_name: "headlamp-admin"
 flux_headlamp_sa_namespace: "headlamp"
+
+# --- HEADLAMP COMBINED KUBECONFIG SECRET ---
+# Creates a k8s Secret merging the local cluster kubeconfig (server patched to
+# https://kubernetes.default.svc) with a secondary cluster kubeconfig from 1Password.
+# Only set on the cluster that runs Headlamp (management-hub).
+# Set flux_headlamp_combined_kubeconfig_secret to enable; leave empty to skip.
+flux_headlamp_combined_kubeconfig_secret: ""
+flux_headlamp_combined_kubeconfig_namespace: "headlamp"
+# 1Password document name for the secondary cluster kubeconfig
+# (e.g. "ai-hub-kubeconfig" — the document exported by the secondary cluster's flux role)
+flux_headlamp_secondary_kubeconfig_1password_item: ""

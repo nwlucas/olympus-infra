@@ -400,6 +400,115 @@
     - flux_state == 'present'
     - flux_headlamp_token_1password_item | default('') != ''
 
+# --- HEADLAMP COMBINED KUBECONFIG SECRET ---
+# Creates a k8s Secret containing a merged kubeconfig with two clusters:
+#   - local cluster (server patched to https://kubernetes.default.svc)
+#   - secondary cluster fetched from a 1Password document (e.g. ai-hub-kubeconfig)
+# Set flux_headlamp_combined_kubeconfig_secret to enable; leave empty to skip.
+
+- name: Read local kubeconfig for combined Secret
+  ansible.builtin.slurp:
+    src: "{{ flux_kubeconfig_path }}"
+  register: _flux_headlamp_local_kubeconfig
+  become: true
+  no_log: true
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_combined_kubeconfig_secret | default('') != ''
+
+- name: Patch local kubeconfig server to in-cluster API
+  ansible.builtin.set_fact:
+    _flux_kubeconfig_incluster: >-
+      {{ (_flux_headlamp_local_kubeconfig.content | b64decode)
+         | regex_replace('server: https://(?:127\.0\.0\.1|localhost):\d+',
+                         'server: https://kubernetes.default.svc') }}
+  no_log: true
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_combined_kubeconfig_secret | default('') != ''
+    - _flux_headlamp_local_kubeconfig is defined
+
+- name: Write in-cluster kubeconfig to temp file on localhost
+  ansible.builtin.copy:
+    content: "{{ _flux_kubeconfig_incluster }}"
+    dest: "/tmp/headlamp-mgmt-incluster.yaml"
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+  no_log: true
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_combined_kubeconfig_secret | default('') != ''
+    - _flux_kubeconfig_incluster is defined
+
+- name: Fetch secondary kubeconfig from 1Password
+  ansible.builtin.command: >
+    /opt/homebrew/bin/op document get "{{ flux_headlamp_secondary_kubeconfig_1password_item }}"
+    --vault {{ flux_kubeconfig_1password_vault }}
+    --output /tmp/headlamp-secondary.yaml
+  delegate_to: localhost
+  become: false
+  no_log: true
+  changed_when: true
+  environment:
+    OP_SERVICE_ACCOUNT_TOKEN: "{{ op_service_account_token | default('') }}"
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_combined_kubeconfig_secret | default('') != ''
+    - flux_headlamp_secondary_kubeconfig_1password_item | default('') != ''
+
+- name: Merge kubeconfigs into combined file
+  ansible.builtin.shell: |
+    set -o pipefail
+    KUBECONFIG=/tmp/headlamp-mgmt-incluster.yaml:/tmp/headlamp-secondary.yaml \
+      kubectl config view --flatten > /tmp/headlamp-combined.yaml
+  args:
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  no_log: true
+  changed_when: true
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_combined_kubeconfig_secret | default('') != ''
+    - _flux_kubeconfig_incluster is defined
+
+- name: Create or update Headlamp combined kubeconfig Secret
+  ansible.builtin.shell: |
+    set -o pipefail
+    kubectl create secret generic {{ flux_headlamp_combined_kubeconfig_secret }} \
+      --namespace {{ flux_headlamp_combined_kubeconfig_namespace }} \
+      --from-file=kubeconfig=/tmp/headlamp-combined.yaml \
+      --dry-run=client -o yaml \
+      --kubeconfig={{ flux_kubeconfig_path }} | \
+    kubectl apply \
+      --kubeconfig={{ flux_kubeconfig_path }} \
+      -f -
+  args:
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  no_log: true
+  changed_when: true
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_combined_kubeconfig_secret | default('') != ''
+    - _flux_kubeconfig_incluster is defined
+
+- name: Remove temp combined kubeconfig files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/headlamp-mgmt-incluster.yaml
+    - /tmp/headlamp-secondary.yaml
+    - /tmp/headlamp-combined.yaml
+  delegate_to: localhost
+  become: false
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_combined_kubeconfig_secret | default('') != ''
+
 # --- ABSENT ---
 
 - name: Uninstall Flux
