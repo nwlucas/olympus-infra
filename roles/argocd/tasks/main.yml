@@ -535,7 +535,7 @@
 - name: Create temp kubeconfig with proxy server URL for ArgoCD cluster registration
   ansible.builtin.shell: |
     set -o pipefail
-    KUBECONFIG={{ ansible_env.HOME }}/.kube/config \
+    KUBECONFIG={{ ansible_facts['env']['HOME'] }}/.kube/config \
       kubectl config view --raw --minify --context {{ argocd_cluster_context }} \
         > /tmp/argocd-cluster-reg-kubeconfig.yml
     KUBECONFIG=/tmp/argocd-cluster-reg-kubeconfig.yml \

@@ -1,8 +1,8 @@
 # ddclient configuration — managed by Ansible, do not edit manually
 #
 # Manages DNS records for this host via Cloudflare:
-#   {{ ansible_hostname }}.{{ ddclient_subdomain }}.{{ ddclient_zone }}  -> public IP (ipify)
-#   {{ ansible_hostname }}.{{ ddclient_zone }}                            -> internal IP
+#   {{ ansible_facts['hostname'] }}.{{ ddclient_subdomain }}.{{ ddclient_zone }}  -> public IP (ipify)
+#   {{ ansible_facts['hostname'] }}.{{ ddclient_zone }}                            -> internal IP
 {% for fqdn in ddclient_extra_fqdns %}
 #   {{ fqdn }}                                                            -> internal IP
 {% endfor %}
@@ -20,11 +20,11 @@ password='{{ _ddclient_cf_token }}'
 
 # Public IP record — detected via external web service
 use=web, web=https://api.ipify.org/
-{{ ansible_hostname }}.{{ ddclient_subdomain }}.{{ ddclient_zone }}
+{{ ansible_facts['hostname'] }}.{{ ddclient_subdomain }}.{{ ddclient_zone }}
 
 # Internal IP records — detected from primary network interface
-use=if, if={{ ansible_default_ipv4.interface }}
-{{ ansible_hostname }}.{{ ddclient_zone }}
+use=if, if={{ ansible_facts['default_ipv4']['interface'] }}
+{{ ansible_facts['hostname'] }}.{{ ddclient_zone }}
 {% for fqdn in ddclient_extra_fqdns %}
 {{ fqdn }}
 {% endfor %}

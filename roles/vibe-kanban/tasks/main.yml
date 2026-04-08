@@ -104,7 +104,7 @@
     cmd: /opt/homebrew/bin/docker compose up -d --pull always
     chdir: "{{ vibe_kanban_compose_dir }}"
   environment:
-    HOME: "{{ ansible_env.HOME }}"
+    HOME: "{{ ansible_facts['env']['HOME'] }}"
   changed_when: true
   when: vibe_kanban_state == "present"
 
@@ -115,7 +115,7 @@
     cmd: /opt/homebrew/bin/docker compose down -v
     chdir: "{{ vibe_kanban_compose_dir }}"
   environment:
-    HOME: "{{ ansible_env.HOME }}"
+    HOME: "{{ ansible_facts['env']['HOME'] }}"
   failed_when: false
   changed_when: true
   when: vibe_kanban_state == "absent"

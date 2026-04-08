@@ -37,7 +37,7 @@
 
 - name: Ensure Homebrew shellenv in ~/.zprofile
   ansible.builtin.lineinfile:
-    path: "{{ ansible_env.HOME }}/.zprofile"
+    path: "{{ ansible_facts['env']['HOME'] }}/.zprofile"
     line: 'eval "$(/opt/homebrew/bin/brew shellenv)"'
     create: true
     mode: "0644"

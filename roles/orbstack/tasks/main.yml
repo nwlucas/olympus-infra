@@ -48,7 +48,7 @@
     - _orb_running.rc == 0
 
 - name: Wait for OrbStack k8s API to be ready
-  ansible.builtin.command: kubectl --kubeconfig {{ ansible_env.HOME }}/.kube/config --context {{ orbstack_k8s_context }} get nodes
+  ansible.builtin.command: kubectl --kubeconfig {{ ansible_facts['env']['HOME'] }}/.kube/config --context {{ orbstack_k8s_context }} get nodes
   register: _orb_k8s_ready
   until: _orb_k8s_ready.rc == 0
   retries: 36
@@ -73,7 +73,7 @@
 - name: Pre-install Helm chart CRDs (kustomize helmCharts skips crds/ directory)
   ansible.builtin.shell: >
     /opt/homebrew/bin/helm show crds {{ item.chart }} --version {{ item.version }} |
-    kubectl --kubeconfig {{ ansible_env.HOME }}/.kube/config
+    kubectl --kubeconfig {{ ansible_facts['env']['HOME'] }}/.kube/config
     --context {{ orbstack_k8s_context }}
     apply --server-side -f -
   loop: "{{ orbstack_helm_crds }}"
