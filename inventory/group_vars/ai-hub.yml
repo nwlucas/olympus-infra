@@ -6,12 +6,12 @@ ansible_user: ansible
 ollama_state: present
 ollama_service_port: 11434
 ollama_models:
-  - glm4-flash
+  - glm-4.7-flash:latest
   - llama3.3:70b
   - nomic-embed-text
 
-# LiteLLM
-litellm_state: present
+# LiteLLM — moved to k8s (clusters/ai-hub/litellm); removed from host
+litellm_state: absent
 litellm_port: 4000
 litellm_config_dest: /opt/litellm/config.yaml
 
