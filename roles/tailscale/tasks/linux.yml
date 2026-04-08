@@ -222,7 +222,8 @@
 - name: Warn if tag key creation failed (tags not defined in ACL tagOwners)
   ansible.builtin.debug:
     msg: >
-      WARNING: Could not create auth key for tags {{ tailscale_tags }}.
+      WARNING: Could not create auth key for tags {{ tailscale_tags }}
+      (HTTP {{ ts_tag_key.status | default('?') }}: {{ ts_tag_key.json.message | default(ts_tag_key.msg | default('unknown error')) }}).
       Ensure all tags are defined in your tailnet ACL tagOwners before re-running.
   when:
     - tailscale_state == "present"
