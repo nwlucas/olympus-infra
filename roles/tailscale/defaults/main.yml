@@ -2,7 +2,18 @@
 tailscale_state: present
 tailscale_hostname: ""
 tailscale_accept_routes: true
+
+# Advertise this node as an exit node. Default false.
 tailscale_advertise_exit_node: false
+
+# Subnets to advertise as routed subnets behind this host.
+# Only applied when non-empty. Example: ["192.168.1.0/24", "10.0.0.0/8"]
+tailscale_advertise_routes: []
+
+# Tailscale-managed services to enable on this node.
+# Only applied when non-empty. Supported values: ["ssh"]
+tailscale_services: []
+
 # OAuth client credentials (from 1Password item: ansible-tailscale-oauth)
 tailscale_oauth_client_id: ""
 tailscale_oauth_client_secret: ""
