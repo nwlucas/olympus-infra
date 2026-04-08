@@ -12,10 +12,12 @@
   when:
     - tailscale_which.rc != 0 or tailscale_state == "absent"
 
-# Use `tailscale ip` as the connectivity check — it succeeds regardless of
-# whether Tailscale is managed by the Mac app or the brew formula service.
-- name: Check if node is already on the tailnet
-  ansible.builtin.command: tailscale ip -4
+# Check for a 100.x.x.x Tailscale address directly on the network interfaces.
+# This works regardless of whether Tailscale is managed by the Mac app or the
+# brew formula — the Mac app socket is inaccessible in non-GUI SSH sessions so
+# `tailscale ip -4` is unreliable via Ansible.
+- name: Check if node is already on the tailnet (interface check)
+  ansible.builtin.shell: /sbin/ifconfig | grep -q "inet 100\."
   register: ts_ip_check
   failed_when: false
   changed_when: false
