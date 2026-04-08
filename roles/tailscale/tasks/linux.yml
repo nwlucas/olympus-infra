@@ -235,7 +235,8 @@
   ansible.builtin.command:
     argv: >-
       {{ ['tailscale', 'up',
-          '--authkey=' + ts_tag_key.json.key]
+          '--authkey=' + ts_tag_key.json.key,
+          '--force-reauth']
          + _ts_tags_argv }}
   become: true
   no_log: true

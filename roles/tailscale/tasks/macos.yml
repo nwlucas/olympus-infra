@@ -252,7 +252,8 @@
   ansible.builtin.command:
     argv: >-
       {{ ['/opt/homebrew/bin/tailscale', 'up',
-          '--authkey=' + ts_tag_key.json.key]
+          '--authkey=' + ts_tag_key.json.key,
+          '--force-reauth']
          + _ts_tags_argv }}
   no_log: true
   changed_when: true
