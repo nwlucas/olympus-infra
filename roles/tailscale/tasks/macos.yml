@@ -255,13 +255,23 @@
           '--authkey=' + ts_tag_key.json.key,
           '--force-reauth']
          + _ts_tags_argv }}
+  register: ts_reauth_result
   no_log: true
-  changed_when: true
+  changed_when: ts_reauth_result.rc == 0
+  failed_when: ts_reauth_result.rc != 0
   when:
     - tailscale_state == "present"
     - tailscale_is_running
     - ts_tags_current != ts_tags_desired
     - ts_tag_key is defined and ts_tag_key.status == 200
+
+- name: Debug re-auth failure (stderr only — key is not shown)
+  ansible.builtin.debug:
+    msg: "tailscale up rc={{ ts_reauth_result.rc }} stderr={{ ts_reauth_result.stderr }}"
+  when:
+    - ts_reauth_result is defined
+    - ts_reauth_result.rc is defined
+    - ts_reauth_result.rc != 0
 
 - name: Tailscale already connected — skip join
   ansible.builtin.debug:
