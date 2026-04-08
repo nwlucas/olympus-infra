@@ -236,13 +236,18 @@
     argv: >-
       {{ ['tailscale', 'up',
           '--authkey=' + ts_tag_key.json.key,
-          '--force-reauth']
-         + _ts_tags_argv }}
+          '--force-reauth',
+          '--accept-risk=all']
+         + _ts_tags_argv
+         + _ts_routes_argv
+         + (['--accept-routes'] if tailscale_accept_routes else [])
+         + (['--advertise-exit-node'] if tailscale_advertise_exit_node else [])
+         + (['--ssh'] if 'ssh' in (tailscale_services | default([])) else []) }}
   become: true
   register: ts_reauth_result
   no_log: true
   changed_when: ts_reauth_result.rc == 0
-  failed_when: false
+  failed_when: ts_reauth_result.rc != 0
   when:
     - tailscale_state == "present"
     - tailscale_is_running
