@@ -59,6 +59,19 @@
          else false }}
   when: tailscale_state == "present"
 
+# Build optional flag lists once — used by both join and set commands.
+# Each produces an empty list when the variable is empty/undefined, so no
+# flag is appended and the command stays clean regardless of input.
+- name: Build optional Tailscale flag lists
+  ansible.builtin.set_fact:
+    _ts_tags_argv: >-
+      {{ ['--advertise-tags=' + (tailscale_tags | join(','))]
+         if (tailscale_tags | default([]) | length > 0) else [] }}
+    _ts_routes_argv: >-
+      {{ ['--advertise-routes=' + (tailscale_advertise_routes | join(','))]
+         if (tailscale_advertise_routes | default([]) | length > 0) else [] }}
+  when: tailscale_state == "present"
+
 # ── Initial join (not yet connected) ──────────────────────────────────────
 
 - name: Generate Tailscale OAuth access token
@@ -106,14 +119,16 @@
     - ts_oauth_token is defined and ts_oauth_token.status == 200
 
 - name: Join Tailscale network with ephemeral key
-  ansible.builtin.command: >
-    tailscale up
-    --authkey={{ ts_auth_key.json.key }}
-    --hostname={{ tailscale_hostname }}
-    --accept-routes={{ tailscale_accept_routes | lower }}
-    {% if tailscale_advertise_exit_node %}--advertise-exit-node{% endif %}
-    {% if tailscale_advertise_routes | default([]) | length > 0 %}--advertise-routes={{ tailscale_advertise_routes | join(',') }}{% endif %}
-    {% if 'ssh' in (tailscale_services | default([])) %}--ssh{% endif %}
+  ansible.builtin.command:
+    argv: >-
+      {{ ['tailscale', 'up',
+          '--authkey=' + ts_auth_key.json.key,
+          '--hostname=' + tailscale_hostname,
+          '--accept-routes=' + (tailscale_accept_routes | lower)]
+         + _ts_tags_argv
+         + (['--advertise-exit-node'] if tailscale_advertise_exit_node else [])
+         + _ts_routes_argv
+         + (['--ssh'] if 'ssh' in (tailscale_services | default([])) else []) }}
   become: true
   no_log: true
   changed_when: true
@@ -126,12 +141,15 @@
 # tailscale set is idempotent — safe to run every time; applies only what changed.
 
 - name: Apply Tailscale settings (already connected)
-  ansible.builtin.command: >
-    tailscale set
-    --accept-routes={{ tailscale_accept_routes | lower }}
-    --advertise-exit-node={{ tailscale_advertise_exit_node | lower }}
-    {% if tailscale_advertise_routes | default([]) | length > 0 %}--advertise-routes={{ tailscale_advertise_routes | join(',') }}{% endif %}
-    {% if 'ssh' in (tailscale_services | default([])) %}--ssh=true --accept-risk=lose-ssh{% else %}--ssh=false{% endif %}
+  ansible.builtin.command:
+    argv: >-
+      {{ ['tailscale', 'set',
+          '--accept-routes=' + (tailscale_accept_routes | lower),
+          '--advertise-exit-node=' + (tailscale_advertise_exit_node | lower)]
+         + _ts_tags_argv
+         + _ts_routes_argv
+         + (['--ssh=true', '--accept-risk=lose-ssh']
+            if 'ssh' in (tailscale_services | default([])) else ['--ssh=false']) }}
   become: true
   changed_when: false
   # When enabling Tailscale SSH over a Tailscale-routed connection the SSH session
