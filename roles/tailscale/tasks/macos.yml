@@ -254,7 +254,8 @@
       {{ ['/opt/homebrew/bin/tailscale', 'up',
           '--authkey=' + ts_tag_key.json.key,
           '--force-reauth',
-          '--accept-risk=all']
+          '--accept-risk=all',
+          '--hostname=' + tailscale_hostname]
          + _ts_tags_argv
          + _ts_routes_argv
          + (['--accept-routes'] if tailscale_accept_routes else [])
