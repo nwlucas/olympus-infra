@@ -446,7 +446,7 @@
   ansible.builtin.command: >
     /opt/homebrew/bin/op document get "{{ item }}"
     --vault {{ flux_kubeconfig_1password_vault }}
-    --output /tmp/headlamp-secondary-{{ loop.index }}.yaml
+    --output /tmp/headlamp-secondary-{{ item }}.yaml
   loop: "{{ flux_headlamp_secondary_kubeconfig_1password_items }}"
   delegate_to: localhost
   become: false
