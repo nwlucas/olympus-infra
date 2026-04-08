@@ -134,6 +134,11 @@
     {% if 'ssh' in (tailscale_services | default([])) %}--ssh=true --accept-risk=lose-ssh{% else %}--ssh=false{% endif %}
   become: true
   changed_when: false
+  # When enabling Tailscale SSH over a Tailscale-routed connection the SSH session
+  # is rerouted immediately and the connection drops — this is expected and the
+  # command has already succeeded. Suppress both the error and unreachable state.
+  ignore_errors: true
+  ignore_unreachable: true
   when:
     - tailscale_state == "present"
     - tailscale_is_running
