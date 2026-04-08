@@ -12,13 +12,23 @@
   when:
     - tailscale_which.rc != 0 or tailscale_state == "absent"
 
-# Check if daemon is already responding (Mac app or brew formula already running)
+# Use `tailscale ip` as the connectivity check — it succeeds regardless of
+# whether Tailscale is managed by the Mac app or the brew formula service.
+- name: Check if node is already on the tailnet
+  ansible.builtin.command: tailscale ip -4
+  register: ts_ip_check
+  failed_when: false
+  changed_when: false
+  when: tailscale_state == "present"
+
 - name: Check Tailscale daemon status
   ansible.builtin.command: tailscale status --json
   register: ts_status_pre
   failed_when: false
   changed_when: false
-  when: tailscale_state == "present"
+  when:
+    - tailscale_state == "present"
+    - ts_ip_check.rc != 0
 
 - name: Start Tailscale daemon via brew services (formula only, not Mac app)
   ansible.builtin.command: /opt/homebrew/bin/brew services start tailscale
@@ -28,6 +38,7 @@
   failed_when: false
   when:
     - tailscale_state == "present"
+    - ts_ip_check.rc != 0
     - ts_status_pre.rc != 0
 
 - name: Wait for Tailscale daemon to respond (if just started)
@@ -40,6 +51,7 @@
   changed_when: false
   when:
     - tailscale_state == "present"
+    - ts_ip_check.rc != 0
     - ts_status_pre.rc != 0
 
 - name: Stop Tailscale service (macOS, absent)
@@ -59,8 +71,10 @@
 - name: Set tailscale_is_running fact
   ansible.builtin.set_fact:
     tailscale_is_running: >-
-      {{ (ts_status.stdout | from_json).BackendState == "Running"
-         if ts_status.rc == 0 else false }}
+      {{ ts_ip_check.rc == 0 or
+         ((ts_status.stdout | from_json).BackendState == "Running"
+          if (ts_status.rc is defined and ts_status.rc == 0 and ts_status.stdout | length > 0)
+          else false) }}
   when: tailscale_state == "present"
 
 # ── Initial join (not yet connected) ──────────────────────────────────────
