@@ -263,7 +263,7 @@
   register: ts_reauth_result
   no_log: true
   changed_when: ts_reauth_result.rc == 0
-  failed_when: ts_reauth_result.rc != 0
+  failed_when: false
   when:
     - tailscale_state == "present"
     - tailscale_is_running
