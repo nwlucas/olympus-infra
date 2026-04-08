@@ -16,6 +16,10 @@ flux_github_token: ""
 flux_kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
 # Optional kubeconfig context name — leave empty for default context in the kubeconfig
 flux_kubeconfig_context: ""
+# Local kubectl context for tasks delegated to localhost (e.g. creating k8s Secrets from the
+# control machine). Must match a context in ~/.kube/config on the control machine.
+# Example: "management-hub" (the context created by the Headlamp combined kubeconfig setup)
+flux_local_kubectl_context: ""
 
 # --- KUBECONFIG EXPORT TO 1PASSWORD ---
 # Reads kubeconfig from the remote host, patches the server URL, and uploads as a

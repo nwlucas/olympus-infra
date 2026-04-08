@@ -487,9 +487,9 @@
       --namespace {{ flux_headlamp_combined_kubeconfig_namespace }} \
       --from-file=kubeconfig=/tmp/headlamp-combined.yaml \
       --dry-run=client -o yaml \
-      --kubeconfig={{ flux_kubeconfig_path }} | \
+      {% if flux_local_kubectl_context != '' %}--context={{ flux_local_kubectl_context }}{% endif %} | \
     kubectl apply \
-      --kubeconfig={{ flux_kubeconfig_path }} \
+      {% if flux_local_kubectl_context != '' %}--context={{ flux_local_kubectl_context }}{% endif %} \
       -f -
   args:
     executable: /bin/bash
