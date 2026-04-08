@@ -134,7 +134,7 @@
 - name: Add FQDN entries to /etc/hosts
   ansible.builtin.lineinfile:
     path: /etc/hosts
-    line: "{{ ansible_default_ipv4.address }} {{ item }}"
+    line: "{{ ansible_facts['default_ipv4']['address'] }} {{ item }}"
     state: present
   loop: "{{ k3s_tls_san | select('search', '\\.') | reject('match', '^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$') | list }}"
   become: true

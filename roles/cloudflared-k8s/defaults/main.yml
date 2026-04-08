@@ -4,7 +4,7 @@ cloudflared_namespace: cloudflared
 # Kubeconfig path and context — override for non-k3s clusters (e.g. OrbStack on macOS)
 cloudflared_kubeconfig_path: "{{ k3s_kubeconfig_path | default('/etc/rancher/k3s/k3s.yaml') }}"
 cloudflared_kubectl_context: ""       # empty = use default context in kubeconfig
-cloudflared_kubectl_become: "{{ ansible_system != 'Darwin' }}"  # false on macOS
+cloudflared_kubectl_become: "{{ ansible_facts['system'] != 'Darwin' }}"  # false on macOS
 cloudflared_tunnel_name: ""
 # Prefer cloudflared_api_token var (from vault); fall back to file on host
 cloudflared_api_token: ""

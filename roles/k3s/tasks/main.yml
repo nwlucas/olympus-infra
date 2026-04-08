@@ -4,4 +4,4 @@
     _k3s_state: "{{ k3s_state | default('present') }}"
 
 - name: Include platform tasks
-  ansible.builtin.include_tasks: "{{ ansible_system | lower }}.yml"
+  ansible.builtin.include_tasks: "{{ ansible_facts['system'] | lower }}.yml"

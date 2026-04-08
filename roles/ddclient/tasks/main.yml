@@ -5,7 +5,7 @@
 
 - name: Set platform-specific config path
   ansible.builtin.set_fact:
-    _ddclient_conf_path: "{{ '/opt/homebrew/etc/ddclient.conf' if ansible_os_family == 'Darwin' else '/etc/ddclient.conf' }}"
+    _ddclient_conf_path: "{{ '/opt/homebrew/etc/ddclient.conf' if ansible_facts['os_family'] == 'Darwin' else '/etc/ddclient.conf' }}"
 
 # --- ABSENT ---
 - name: Remove ddclient (Linux)
@@ -16,7 +16,7 @@
   become: true
   when:
     - _ddclient_state == 'absent'
-    - ansible_os_family != 'Darwin'
+    - ansible_facts['os_family'] != 'Darwin'
 
 - name: Remove ddclient (macOS)
   community.general.homebrew:
@@ -24,13 +24,13 @@
     state: absent
   when:
     - _ddclient_state == 'absent'
-    - ansible_os_family == 'Darwin'
+    - ansible_facts['os_family'] == 'Darwin'
 
 - name: Remove ddclient config
   ansible.builtin.file:
     path: "{{ _ddclient_conf_path }}"
     state: absent
-  become: "{{ ansible_os_family != 'Darwin' }}"
+  become: "{{ ansible_facts['os_family'] != 'Darwin' }}"
   when: _ddclient_state == 'absent'
 
 # --- PRESENT ---
@@ -99,7 +99,7 @@
   become: true
   when:
     - _ddclient_state == 'present'
-    - ansible_os_family != 'Darwin'
+    - ansible_facts['os_family'] != 'Darwin'
 
 - name: Install ddclient (macOS)
   community.general.homebrew:
@@ -107,7 +107,7 @@
     state: present
   when:
     - _ddclient_state == 'present'
-    - ansible_os_family == 'Darwin'
+    - ansible_facts['os_family'] == 'Darwin'
 
 # Look up zone ID once for all record operations
 - name: Look up Cloudflare zone ID
@@ -132,7 +132,7 @@
 - name: Build internal FQDN list
   ansible.builtin.set_fact:
     _ddclient_internal_fqdns: >-
-      {{ [ansible_hostname + '.' + ddclient_zone] + (ddclient_extra_fqdns | list) }}
+      {{ [ansible_facts['hostname'] + '.' + ddclient_zone] + (ddclient_extra_fqdns | list) }}
   when: _ddclient_state == 'present'
 
 # --- Seed A records (idempotent: create if absent, skip if present) ---
@@ -141,7 +141,7 @@
   ansible.builtin.uri:
     url: >-
       https://api.cloudflare.com/client/v4/zones/{{ _ddclient_zone_id
-      }}/dns_records?type=A&name={{ ansible_hostname
+      }}/dns_records?type=A&name={{ ansible_facts['hostname']
       }}.{{ ddclient_subdomain }}.{{ ddclient_zone }}
     method: GET
     headers:
@@ -161,8 +161,8 @@
     body_format: json
     body:
       type: A
-      name: "{{ ansible_hostname }}.{{ ddclient_subdomain }}.{{ ddclient_zone }}"
-      content: "{{ ansible_default_ipv4.address }}"
+      name: "{{ ansible_facts['hostname'] }}.{{ ddclient_subdomain }}.{{ ddclient_zone }}"
+      content: "{{ ansible_facts['default_ipv4']['address'] }}"
       ttl: "{{ ddclient_ttl }}"
       proxied: false
     status_code: 200
@@ -195,7 +195,7 @@
     body:
       type: A
       name: "{{ item.item }}"
-      content: "{{ ansible_default_ipv4.address }}"
+      content: "{{ ansible_facts['default_ipv4']['address'] }}"
       ttl: "{{ ddclient_ttl }}"
       proxied: false
     status_code: 200
@@ -218,19 +218,19 @@
   notify: restart ddclient
   when:
     - _ddclient_state == 'present'
-    - ansible_os_family != 'Darwin'
+    - ansible_facts['os_family'] != 'Darwin'
 
 - name: Render ddclient.conf (macOS)
   ansible.builtin.template:
     src: ddclient.conf.j2
     dest: "{{ _ddclient_conf_path }}"
-    owner: "{{ ansible_user_id }}"
-    group: "{{ ansible_user_gid }}"
+    owner: "{{ ansible_facts['user_id'] }}"
+    group: "{{ ansible_facts['user_gid'] }}"
     mode: '0600'
   notify: restart ddclient
   when:
     - _ddclient_state == 'present'
-    - ansible_os_family == 'Darwin'
+    - ansible_facts['os_family'] == 'Darwin'
 
 - name: Enable and start ddclient (Linux)
   ansible.builtin.systemd:
@@ -240,7 +240,7 @@
   become: true
   when:
     - _ddclient_state == 'present'
-    - ansible_os_family != 'Darwin'
+    - ansible_facts['os_family'] != 'Darwin'
 
 - name: Check ddclient service status (macOS)
   ansible.builtin.shell: brew services list | grep "^ddclient" || true
@@ -249,7 +249,7 @@
   failed_when: false
   when:
     - _ddclient_state == 'present'
-    - ansible_os_family == 'Darwin'
+    - ansible_facts['os_family'] == 'Darwin'
 
 - name: Enable and start ddclient (macOS)
   ansible.builtin.shell: |
@@ -262,5 +262,5 @@
   failed_when: false
   when:
     - _ddclient_state == 'present'
-    - ansible_os_family == 'Darwin'
+    - ansible_facts['os_family'] == 'Darwin'
     - "'started' not in (_ddclient_svc_status.stdout | default(''))"

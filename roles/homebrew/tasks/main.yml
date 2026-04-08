@@ -44,4 +44,4 @@
   become: false
   when:
     - homebrew_state == "present"
-    - ansible_system == "Darwin"
+    - ansible_facts['system'] == "Darwin"

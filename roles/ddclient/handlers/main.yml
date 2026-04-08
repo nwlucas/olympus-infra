@@ -4,7 +4,7 @@
     name: ddclient
     state: restarted
   become: true
-  when: ansible_os_family != 'Darwin'
+  when: ansible_facts['os_family'] != 'Darwin'
   listen: restart ddclient
 
 - name: Restart ddclient (macOS)
@@ -14,5 +14,5 @@
     HOMEBREW_NO_AUTO_UPDATE: "1"
     HOMEBREW_NO_ANALYTICS: "1"
   changed_when: true
-  when: ansible_os_family == 'Darwin'
+  when: ansible_facts['os_family'] == 'Darwin'
   listen: restart ddclient

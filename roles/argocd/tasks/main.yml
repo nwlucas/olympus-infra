@@ -396,7 +396,7 @@
     - _argocd_state == 'present'
     - argocd_create_local_apps | bool
     - argocd_apps | length > 0
-    - ansible_system == 'Linux'
+    - ansible_facts['system'] == 'Linux'
 
 - name: Log in to local ArgoCD (for local app creation)
   ansible.builtin.command: >
@@ -466,7 +466,7 @@
   become: false
   when:
     - argocd_register_cluster | default(false)
-    - ansible_system == 'Darwin'
+    - ansible_facts['system'] == 'Darwin'
 
 # Dynamically resolve management host Tailscale IP via API
 - name: Get Tailscale OAuth token (for management IP lookup)
