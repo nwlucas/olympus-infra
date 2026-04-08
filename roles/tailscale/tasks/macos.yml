@@ -12,6 +12,18 @@
   when:
     - tailscale_which.rc != 0 or tailscale_state == "absent"
 
+# Ensure the Tailscale LaunchDaemon is registered to start on boot.
+# brew services start is idempotent — safe to run every time.
+# Must run as root so the plist lands in /Library/LaunchDaemons (system-wide,
+# survives reboots) rather than ~/Library/LaunchAgents (user-session only).
+- name: Enable Tailscale LaunchDaemon (auto-start on boot)
+  ansible.builtin.command: /opt/homebrew/bin/brew services start tailscale
+  become: true
+  register: ts_service_enable
+  changed_when: "'Successfully started' in (ts_service_enable.stdout | default(''))"
+  failed_when: false
+  when: tailscale_state == "present"
+
 # Check for a 100.x.x.x Tailscale address directly on the network interfaces.
 # This works regardless of whether Tailscale is managed by the Mac app or the
 # brew formula — the Mac app socket is inaccessible in non-GUI SSH sessions so
@@ -23,38 +35,17 @@
   changed_when: false
   when: tailscale_state == "present"
 
-- name: Check Tailscale daemon status
+- name: Wait for Tailscale daemon to respond after service start
   ansible.builtin.command: tailscale status --json
   register: ts_status_pre
-  failed_when: false
-  changed_when: false
-  when:
-    - tailscale_state == "present"
-    - ts_ip_check.rc != 0
-
-- name: Start Tailscale daemon via brew services (formula only, not Mac app)
-  ansible.builtin.command: /opt/homebrew/bin/brew services start tailscale
-  become: true
-  register: ts_start
-  changed_when: ts_start.rc == 0
-  failed_when: false
-  when:
-    - tailscale_state == "present"
-    - ts_ip_check.rc != 0
-    - ts_status_pre.rc != 0
-
-- name: Wait for Tailscale daemon to respond (if just started)
-  ansible.builtin.command: tailscale status --json
-  register: ts_wait
   retries: 10
   delay: 3
-  until: ts_wait.rc == 0
+  until: ts_status_pre.rc == 0
   failed_when: false
   changed_when: false
   when:
     - tailscale_state == "present"
     - ts_ip_check.rc != 0
-    - ts_status_pre.rc != 0
 
 - name: Stop Tailscale service (macOS, absent)
   ansible.builtin.command: /opt/homebrew/bin/brew services stop tailscale
@@ -94,7 +85,7 @@
 
 # ── Initial join (not yet connected) ──────────────────────────────────────
 
-- name: Generate Tailscale ephemeral auth key via OAuth API
+- name: Generate Tailscale auth key via OAuth API
   ansible.builtin.uri:
     url: https://api.tailscale.com/api/v2/oauth/token
     method: POST
@@ -112,7 +103,10 @@
     - tailscale_oauth_client_id != ""
     - tailscale_oauth_client_secret != ""
 
-- name: Create ephemeral auth key via Tailscale API
+# ephemeral: false — node persists in the tailnet when offline so it keeps
+# the same Tailscale IP across reboots and re-auths. Ephemeral nodes are
+# removed on disconnect which causes IP churn.
+- name: Create auth key via Tailscale API
   ansible.builtin.uri:
     url: https://api.tailscale.com/api/v2/tailnet/-/keys
     method: POST
@@ -125,7 +119,7 @@
         devices:
           create:
             reusable: false
-            ephemeral: true
+            ephemeral: false
             preauthorized: true
             tags: "{{ tailscale_tags }}"
       expirySeconds: 300
@@ -138,7 +132,7 @@
     - tailscale_oauth_client_id != ""
     - ts_oauth_token is defined and ts_oauth_token.status == 200
 
-- name: Join Tailscale network with ephemeral key
+- name: Join Tailscale network
   ansible.builtin.command:
     argv: >-
       {{ ['/opt/homebrew/bin/tailscale', 'up',
