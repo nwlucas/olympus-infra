@@ -50,6 +50,11 @@ flux_headlamp_sa_namespace: "headlamp"
 # Set flux_headlamp_combined_kubeconfig_secret to enable; leave empty to skip.
 flux_headlamp_combined_kubeconfig_secret: ""
 flux_headlamp_combined_kubeconfig_namespace: "headlamp"
-# 1Password document name for the secondary cluster kubeconfig
-# (e.g. "ai-hub-kubeconfig" — the document exported by the secondary cluster's flux role)
-flux_headlamp_secondary_kubeconfig_1password_item: ""
+# List of 1Password document names for secondary cluster kubeconfigs.
+# Each entry is fetched and merged into the combined kubeconfig.
+# Add new clusters here as they are bootstrapped — re-run the role to update the Secret.
+# Example:
+#   flux_headlamp_secondary_kubeconfig_1password_items:
+#     - ai-hub-kubeconfig
+#     - node-hub-kubeconfig
+flux_headlamp_secondary_kubeconfig_1password_items: []
