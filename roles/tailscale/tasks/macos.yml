@@ -228,11 +228,25 @@
     status_code: 200
   register: ts_tag_key
   no_log: true
+  # 400 means one or more tags are not yet defined in the tailnet ACL tagOwners.
+  # Fail gracefully so other settings (routes, SSH) are still applied.
+  failed_when: false
   when:
     - tailscale_state == "present"
     - tailscale_is_running
     - ts_tags_current != ts_tags_desired
     - ts_oauth_tags is defined and ts_oauth_tags.status == 200
+
+- name: Warn if tag key creation failed (tags not defined in ACL tagOwners)
+  ansible.builtin.debug:
+    msg: >
+      WARNING: Could not create auth key for tags {{ tailscale_tags }}.
+      Ensure all tags are defined in your tailnet ACL tagOwners before re-running.
+  when:
+    - tailscale_state == "present"
+    - tailscale_is_running
+    - ts_tags_current != ts_tags_desired
+    - ts_tag_key is defined and ts_tag_key.status is defined and ts_tag_key.status != 200
 
 - name: Re-authenticate to apply updated ACL tags
   ansible.builtin.command:
