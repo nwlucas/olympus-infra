@@ -131,7 +131,7 @@
     --accept-routes={{ tailscale_accept_routes | lower }}
     --advertise-exit-node={{ tailscale_advertise_exit_node | lower }}
     {% if tailscale_advertise_routes | default([]) | length > 0 %}--advertise-routes={{ tailscale_advertise_routes | join(',') }}{% endif %}
-    {% if 'ssh' in (tailscale_services | default([])) %}--ssh=true{% else %}--ssh=false{% endif %}
+    {% if 'ssh' in (tailscale_services | default([])) %}--ssh=true --accept-risk=lose-ssh{% else %}--ssh=false{% endif %}
   become: true
   changed_when: false
   when:
