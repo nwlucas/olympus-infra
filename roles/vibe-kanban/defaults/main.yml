@@ -1,2 +1,7 @@
 ---
 vibe_kanban_state: present
+vibe_kanban_compose_dir: /opt/vibe-kanban
+vibe_kanban_domain: vibe.nwlnexus.net
+# 1Password item names — fetched at run time via op read
+vibe_kanban_op_item: vibe-kanban
+vibe_kanban_google_oauth_op_item: google-oauth-olympus

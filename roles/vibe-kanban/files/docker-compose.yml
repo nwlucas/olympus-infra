@@ -1,0 +1,71 @@
+name: vibe-kanban
+
+# Secrets come from .env (written by Ansible from 1Password).
+# Required .env vars:
+#   DB_PASSWORD               — PostgreSQL app user password
+#   ELECTRIC_ROLE_PASSWORD    — ElectricSQL HTTP API secret (reused as ELECTRIC_SECRET)
+#   VIBEKANBAN_REMOTE_JWT_SECRET — JWT signing secret
+#   DOMAIN                    — public hostname (e.g. vibe.nwlnexus.net)
+#   GOOGLE_OAUTH_CLIENT_ID
+#   GOOGLE_OAUTH_CLIENT_SECRET
+#
+# TLS is terminated upstream by Traefik (OrbStack k8s). No Caddy needed here.
+# remote-server port 8081 is published on all interfaces so OrbStack k8s
+# can reach it via the Tailscale IP in the k8s Endpoints object.
+
+services:
+  remote-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: remote
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: remote
+    command:
+      - postgres
+      - -c
+      - wal_level=logical
+    volumes:
+      - remote-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U remote"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  electric:
+    image: electricsql/electric:1.4.13
+    restart: unless-stopped
+    environment:
+      # Uses the remote (superuser) to set up replication — no separate sync role needed
+      DATABASE_URL: postgresql://remote:${DB_PASSWORD}@remote-db:5432/remote?sslmode=disable
+      # ELECTRIC_SECRET authenticates remote-server → Electric HTTP API calls
+      ELECTRIC_SECRET: ${ELECTRIC_ROLE_PASSWORD}
+    depends_on:
+      remote-db:
+        condition: service_healthy
+
+  remote-server:
+    image: ghcr.io/everythings-gonna-be-alright/vibe-kanban:remote-v0.1.26
+    restart: unless-stopped
+    ports:
+      # Bind to all interfaces so OrbStack k8s pods can reach this via Tailscale IP
+      - "8081:8081"
+    environment:
+      RUST_LOG: info,remote=info
+      SERVER_DATABASE_URL: postgres://remote:${DB_PASSWORD}@remote-db:5432/remote
+      SERVER_LISTEN_ADDR: 0.0.0.0:8081
+      ELECTRIC_URL: http://electric:3000
+      SERVER_PUBLIC_BASE_URL: https://${DOMAIN}
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET}
+      VIBEKANBAN_REMOTE_JWT_SECRET: ${VIBEKANBAN_REMOTE_JWT_SECRET}
+      ELECTRIC_ROLE_PASSWORD: ${ELECTRIC_ROLE_PASSWORD}
+    depends_on:
+      remote-db:
+        condition: service_healthy
+      electric:
+        condition: service_started
+
+volumes:
+  remote-db-data:
