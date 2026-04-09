@@ -43,18 +43,25 @@
 
     # ── Fetch all secrets from 1Password ─────────────────────────────────────
     # Each node reads secrets for its own role set.
-    # References must match items in the Dev vault.
+    # 1Password item → field mapping (Dev vault):
+    #   ansible-tailscale-oauth  → client-id, client-secret
+    #   dns-only-cf-token        → credential          (ddclient: DNS-only token)
+    #   cloudflare-account       → api_token           (cloudflared/externaldns: read/write)
+    #   cloudflare-account       → account_id          (cloudflared: account ID)
+    #   olympus-flux-gh-pat      → token               (Flux bootstrap PAT)
+    #   1password-connect-token  → credential          (ESO connect token)
+    #   olympus-edge-service-account: token on-disk at /opt/ansible-pull/.op-service-account-token
     - name: Fetch secrets from 1Password
       ansible.builtin.command: "op read '{{ item.ref }}'"
       environment: "{{ _op_env }}"
       register: _op_secrets
       loop:
-        - { name: tailscale_oauth_client_id,     ref: "op://Dev/tailscale-oauth/client_id" }
-        - { name: tailscale_oauth_client_secret,  ref: "op://Dev/tailscale-oauth/client_secret" }
-        - { name: ddclient_cf_api_token,          ref: "op://Dev/cloudflare-api-token/credential" }
-        - { name: cloudflared_api_token,          ref: "op://Dev/cloudflare-api-token/credential" }
-        - { name: cloudflared_account_id,         ref: "op://Dev/cloudflare-account-id/credential" }
-        - { name: flux_github_token,              ref: "op://Dev/flux-github-token/credential" }
+        - { name: tailscale_oauth_client_id,     ref: "op://Dev/ansible-tailscale-oauth/client-id" }
+        - { name: tailscale_oauth_client_secret,  ref: "op://Dev/ansible-tailscale-oauth/client-secret" }
+        - { name: ddclient_cf_api_token,          ref: "op://Dev/dns-only-cf-token/credential" }
+        - { name: cloudflared_api_token,          ref: "op://Dev/cloudflare-account/api_token" }
+        - { name: cloudflared_account_id,         ref: "op://Dev/cloudflare-account/account_id" }
+        - { name: flux_github_token,              ref: "op://Dev/olympus-flux-gh-pat/token" }
         - { name: eso_connect_token,              ref: "op://Dev/1password-connect-token/credential" }
       no_log: true
       changed_when: false
