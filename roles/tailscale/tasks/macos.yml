@@ -24,6 +24,32 @@
   failed_when: false
   when: tailscale_state == "present"
 
+# ── IP forwarding (required for subnet routing and exit node) ─────────────────
+# On macOS, Tailscale's network extension handles packet forwarding for its own
+# tunneled traffic, but the OS kernel must also forward packets between
+# interfaces when the host acts as a subnet router or exit node.
+# /etc/sysctl.conf is read at boot by launchd; the sysctl -w makes it effective
+# immediately without requiring a reboot.
+
+- name: Enable IP forwarding for subnet routing / exit node (macOS)
+  ansible.builtin.lineinfile:
+    path: /etc/sysctl.conf
+    line: "net.inet.ip.forwarding=1"
+    create: true
+    mode: "0644"
+  become: true
+  when:
+    - tailscale_state == "present"
+    - (tailscale_advertise_routes | default([]) | length > 0) or (tailscale_advertise_exit_node | default(false))
+
+- name: Apply IP forwarding immediately (macOS)
+  ansible.builtin.command: sysctl -w net.inet.ip.forwarding=1
+  become: true
+  changed_when: false
+  when:
+    - tailscale_state == "present"
+    - (tailscale_advertise_routes | default([]) | length > 0) or (tailscale_advertise_exit_node | default(false))
+
 # Check for a 100.x.x.x Tailscale address directly on the network interfaces.
 # This works regardless of whether Tailscale is managed by the Mac app or the
 # brew formula — the Mac app socket is inaccessible in non-GUI SSH sessions so
@@ -103,9 +129,9 @@
     - tailscale_oauth_client_id != ""
     - tailscale_oauth_client_secret != ""
 
-# ephemeral: false — node persists in the tailnet when offline so it keeps
-# the same Tailscale IP across reboots and re-auths. Ephemeral nodes are
-# removed on disconnect which causes IP churn.
+# ephemeral: tailscale_ephemeral (default false) — persistent nodes keep their
+# Tailscale IP across reboots and re-auths. Ephemeral nodes are removed on
+# disconnect which causes IP churn. Use false for servers.
 - name: Create auth key via Tailscale API
   ansible.builtin.uri:
     url: https://api.tailscale.com/api/v2/tailnet/-/keys
@@ -119,7 +145,7 @@
         devices:
           create:
             reusable: false
-            ephemeral: false
+            ephemeral: "{{ tailscale_ephemeral }}"
             preauthorized: true
             tags: "{{ tailscale_tags }}"
       expirySeconds: 300

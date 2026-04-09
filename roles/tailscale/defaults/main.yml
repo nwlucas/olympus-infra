@@ -6,6 +6,12 @@ tailscale_accept_routes: true
 # Advertise this node as an exit node. Default false.
 tailscale_advertise_exit_node: false
 
+# Whether auth keys created for this node should be ephemeral.
+# Ephemeral nodes are removed from the tailnet when they disconnect — this
+# causes IP churn on reboots. Use false for servers; true only for
+# short-lived workers / CI runners that should not persist in the tailnet.
+tailscale_ephemeral: false
+
 # Subnets to advertise as routed subnets behind this host.
 # Only applied when non-empty. Example: ["192.168.1.0/24", "10.0.0.0/8"]
 tailscale_advertise_routes: []

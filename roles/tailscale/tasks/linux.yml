@@ -43,6 +43,26 @@
     state: "{{ 'started' if tailscale_state == 'present' else 'stopped' }}"
   become: true
 
+# ── IP forwarding (required for subnet routing and exit node) ─────────────────
+# Must be applied before `tailscale up` so the kernel can forward packets as
+# soon as routes are advertised. Uses a dedicated sysctl drop-in so it
+# survives upgrades and doesn't touch /etc/sysctl.conf.
+
+- name: Enable IP forwarding for subnet routing / exit node (Linux)
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "1"
+    state: present
+    sysctl_file: /etc/sysctl.d/99-tailscale.conf
+    reload: true
+  loop:
+    - net.ipv4.ip_forward
+    - net.ipv6.conf.all.forwarding
+  become: true
+  when:
+    - tailscale_state == "present"
+    - (tailscale_advertise_routes | default([]) | length > 0) or (tailscale_advertise_exit_node | default(false))
+
 - name: Check Tailscale backend state
   ansible.builtin.command: tailscale status --json
   register: ts_status
@@ -72,7 +92,7 @@
          if (tailscale_advertise_routes | default([]) | length > 0) else [] }}
   when: tailscale_state == "present"
 
-# ── Initial join (not yet connected) ──────────────────────────────────────
+# ── Initial join (not yet connected) ──────────────────────────────────────────
 
 - name: Generate Tailscale OAuth access token
   ansible.builtin.uri:
@@ -92,7 +112,11 @@
     - tailscale_oauth_client_id != ""
     - tailscale_oauth_client_secret != ""
 
-- name: Create ephemeral auth key via Tailscale API
+# ephemeral: false — node persists in the tailnet when offline so it keeps
+# the same Tailscale IP across reboots and re-auths. Ephemeral nodes are
+# removed on disconnect which causes IP churn and disrupts DNS / k8s APIserver
+# SANs that encode the Tailscale IP.
+- name: Create auth key via Tailscale API
   ansible.builtin.uri:
     url: https://api.tailscale.com/api/v2/tailnet/-/keys
     method: POST
@@ -105,7 +129,7 @@
         devices:
           create:
             reusable: false
-            ephemeral: true
+            ephemeral: "{{ tailscale_ephemeral }}"
             preauthorized: true
             tags: "{{ tailscale_tags }}"
       expirySeconds: 300
@@ -118,7 +142,7 @@
     - tailscale_oauth_client_id != ""
     - ts_oauth_token is defined and ts_oauth_token.status == 200
 
-- name: Join Tailscale network with ephemeral key
+- name: Join Tailscale network
   ansible.builtin.command:
     argv: >-
       {{ ['tailscale', 'up',
@@ -137,7 +161,7 @@
     - not tailscale_is_running
     - ts_auth_key is defined and ts_auth_key.status == 200
 
-# ── Enforce desired settings on already-connected node ────────────────────
+# ── Enforce desired settings on already-connected node ────────────────────────
 # tailscale set is idempotent — safe to run every time; applies only what changed.
 
 - name: Apply Tailscale settings (already connected)
@@ -160,6 +184,39 @@
     - tailscale_state == "present"
     - tailscale_is_running
 
+# tailscale set does not support --hostname. Detect drift and fix via
+# `tailscale up --hostname=...` which applies the change without re-joining.
+- name: Detect Tailscale hostname drift
+  ansible.builtin.set_fact:
+    ts_hostname_current: "{{ (ts_status.stdout | from_json).Self.HostName }}"
+    ts_device_id: "{{ (ts_status.stdout | from_json).Self.ID }}"
+  when:
+    - tailscale_state == "present"
+    - tailscale_is_running
+    - ts_status.rc == 0
+
+# `tailscale up` without an authkey updates settings on an already-connected
+# node but requires ALL non-default flags to be re-stated (Tailscale enforces
+# this to prevent accidental flag omissions). Mirror the full join argv minus
+# the authkey so the command is self-consistent.
+- name: Fix Tailscale hostname if drifted
+  ansible.builtin.command:
+    argv: >-
+      {{ ['tailscale', 'up',
+          '--hostname=' + tailscale_hostname,
+          '--accept-routes=' + (tailscale_accept_routes | lower)]
+         + _ts_tags_argv
+         + (['--advertise-exit-node'] if tailscale_advertise_exit_node else [])
+         + _ts_routes_argv
+         + (['--ssh'] if 'ssh' in (tailscale_services | default([])) else []) }}
+  become: true
+  changed_when: true
+  when:
+    - tailscale_state == "present"
+    - tailscale_is_running
+    - ts_hostname_current is defined
+    - ts_hostname_current != tailscale_hostname
+
 # tailscale set does not support --advertise-tags. Use the Tailscale API to
 # update ACL tags in-place — no re-auth, no IP change, no service interruption.
 # Requires OAuth client to have devices:write scope (Settings → Trust credentials).
@@ -167,13 +224,12 @@
   ansible.builtin.set_fact:
     ts_tags_current: "{{ (ts_status.stdout | from_json).Self.Tags | default([]) | sort }}"
     ts_tags_desired: "{{ tailscale_tags | default([]) | sort }}"
-    ts_device_id: "{{ (ts_status.stdout | from_json).Self.ID }}"
   when:
     - tailscale_state == "present"
     - tailscale_is_running
     - ts_status.rc == 0
 
-- name: Get OAuth token for tag update
+- name: Get OAuth token for device updates
   ansible.builtin.uri:
     url: https://api.tailscale.com/api/v2/oauth/token
     method: POST
@@ -183,21 +239,108 @@
       client_id: "{{ tailscale_oauth_client_id }}"
       client_secret: "{{ tailscale_oauth_client_secret }}"
     status_code: 200
-  register: ts_oauth_tags
+  register: ts_oauth_device
   no_log: true
   when:
     - tailscale_state == "present"
     - tailscale_is_running
-    - ts_tags_current != ts_tags_desired
     - tailscale_oauth_client_id != ""
     - tailscale_oauth_client_secret != ""
+    - (ts_tags_current != ts_tags_desired) or
+      (ts_hostname_current is defined and ts_hostname_current != tailscale_hostname)
+
+# Check via Tailscale API whether the node is ephemeral so we can re-auth to
+# make it persistent. A node joined with an ephemeral key is removed from the
+# tailnet when it goes offline — this causes IP churn on reboots.
+- name: Query device info to detect ephemeral status
+  ansible.builtin.uri:
+    url: "https://api.tailscale.com/api/v2/device/{{ ts_device_id }}"
+    headers:
+      Authorization: "Bearer {{ ts_oauth_device.json.access_token }}"
+    status_code: 200
+  register: ts_device_info
+  no_log: true
+  when:
+    - tailscale_state == "present"
+    - tailscale_is_running
+    - ts_device_id is defined
+    - ts_oauth_device is defined and ts_oauth_device.status == 200
+
+# Only re-auth when the node is currently ephemeral but desired state is persistent.
+# (Ephemeral → ephemeral and persistent → persistent are both no-ops here.)
+- name: Generate OAuth token for re-auth (ephemeral → persistent)
+  ansible.builtin.uri:
+    url: https://api.tailscale.com/api/v2/oauth/token
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: client_credentials
+      client_id: "{{ tailscale_oauth_client_id }}"
+      client_secret: "{{ tailscale_oauth_client_secret }}"
+    status_code: 200
+  register: ts_oauth_reauth
+  no_log: true
+  when:
+    - tailscale_state == "present"
+    - tailscale_is_running
+    - not tailscale_ephemeral
+    - ts_device_info is defined and ts_device_info.status == 200
+    - ts_device_info.json.isEphemeral | default(false)
+    - tailscale_oauth_client_id != ""
+    - tailscale_oauth_client_secret != ""
+
+- name: Create persistent auth key for re-auth
+  ansible.builtin.uri:
+    url: https://api.tailscale.com/api/v2/tailnet/-/keys
+    method: POST
+    headers:
+      Authorization: "Bearer {{ ts_oauth_reauth.json.access_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      capabilities:
+        devices:
+          create:
+            reusable: false
+            ephemeral: "{{ tailscale_ephemeral }}"
+            preauthorized: true
+            tags: "{{ tailscale_tags }}"
+      expirySeconds: 300
+    status_code: 200
+  register: ts_reauth_key
+  no_log: true
+  when:
+    - tailscale_state == "present"
+    - tailscale_is_running
+    - ts_oauth_reauth is defined and ts_oauth_reauth.status == 200
+
+# Running `tailscale up --authkey` on an already-connected node re-authenticates
+# in-place — the node key (and therefore the Tailscale IP) is preserved.
+- name: Re-auth node as persistent (was ephemeral)
+  ansible.builtin.command:
+    argv: >-
+      {{ ['tailscale', 'up',
+          '--authkey=' + ts_reauth_key.json.key,
+          '--hostname=' + tailscale_hostname,
+          '--accept-routes=' + (tailscale_accept_routes | lower)]
+         + _ts_tags_argv
+         + (['--advertise-exit-node'] if tailscale_advertise_exit_node else [])
+         + _ts_routes_argv
+         + (['--ssh'] if 'ssh' in (tailscale_services | default([])) else []) }}
+  become: true
+  no_log: true
+  changed_when: true
+  when:
+    - tailscale_state == "present"
+    - tailscale_is_running
+    - ts_reauth_key is defined and (ts_reauth_key.status | default(0)) == 200
 
 - name: Update device ACL tags via Tailscale API
   ansible.builtin.uri:
     url: "https://api.tailscale.com/api/v2/device/{{ ts_device_id }}/tags"
     method: POST
     headers:
-      Authorization: "Bearer {{ ts_oauth_tags.json.access_token }}"
+      Authorization: "Bearer {{ ts_oauth_device.json.access_token }}"
       Content-Type: application/json
     body_format: json
     body:
@@ -208,7 +351,7 @@
     - tailscale_state == "present"
     - tailscale_is_running
     - ts_tags_current != ts_tags_desired
-    - ts_oauth_tags is defined and ts_oauth_tags.status == 200
+    - ts_oauth_device is defined and ts_oauth_device.status == 200
 
 - name: Tailscale already connected — skip join
   ansible.builtin.debug:
