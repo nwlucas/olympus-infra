@@ -19,7 +19,7 @@
       # iSCSI multipath — for QNAP iSCSI multi-path I/O
       - multipath-tools
       # Kernel modules for iSCSI (module names vary; package covers the running kernel)
-      - "linux-modules-extra-{{ ansible_kernel }}"
+      - "linux-modules-extra-{{ ansible_facts['kernel'] }}"
       # Basic tooling
       - curl
       - wget
