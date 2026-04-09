@@ -496,6 +496,38 @@
     - flux_headlamp_context_renames | default({}) | length > 0
     - _flux_kubeconfig_incluster is defined
 
+# Secondary clusters (OrbStack, etc.) are accessed via Tailscale IP.
+# OrbStack's server cert is issued for 127.0.0.1 only — the SAN will never
+# match a remote IP. Set insecure-skip-tls-verify on every secondary cluster
+# so Headlamp can connect without cert errors.
+- name: Set insecure-skip-tls-verify on secondary clusters in combined kubeconfig
+  ansible.builtin.shell: |
+    set -o pipefail
+    # Get all cluster names from the combined kubeconfig
+    cluster_names=$(kubectl config --kubeconfig=/tmp/headlamp-combined.yaml view -o jsonpath='{.clusters[*].name}')
+    for cluster in $cluster_names; do
+      server=$(kubectl config --kubeconfig=/tmp/headlamp-combined.yaml view -o jsonpath="{.clusters[?(@.name=='${cluster}')].cluster.server}")
+      # Skip the in-cluster management-hub entry — it uses kubernetes.default.svc
+      if echo "$server" | grep -q "kubernetes.default.svc"; then
+        continue
+      fi
+      kubectl config set-cluster "$cluster" \
+        --insecure-skip-tls-verify=true \
+        --kubeconfig=/tmp/headlamp-combined.yaml
+      kubectl config unset "clusters.${cluster}.certificate-authority-data" \
+        --kubeconfig=/tmp/headlamp-combined.yaml 2>/dev/null || true
+    done
+  args:
+    executable: /bin/bash
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_combined_kubeconfig_secret | default('') != ''
+    - flux_headlamp_secondary_kubeconfig_1password_items | default([]) | length > 0
+    - _flux_kubeconfig_incluster is defined
+
 - name: Create or update Headlamp combined kubeconfig Secret
   ansible.builtin.shell: |
     set -o pipefail
