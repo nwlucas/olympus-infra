@@ -264,7 +264,7 @@
     - tailscale_state == "present"
     - tailscale_is_running
     - ts_device_id is defined
-    - ts_oauth_device is defined and ts_oauth_device.status == 200
+    - ts_oauth_device is defined and (ts_oauth_device.status | default(0)) == 200
 
 # Only re-auth when the node is currently ephemeral but desired state is persistent.
 # (Ephemeral → ephemeral and persistent → persistent are both no-ops here.)
@@ -351,7 +351,7 @@
     - tailscale_state == "present"
     - tailscale_is_running
     - ts_tags_current != ts_tags_desired
-    - ts_oauth_device is defined and ts_oauth_device.status == 200
+    - ts_oauth_device is defined and (ts_oauth_device.status | default(0)) == 200
 
 - name: Tailscale already connected — skip join
   ansible.builtin.debug:
