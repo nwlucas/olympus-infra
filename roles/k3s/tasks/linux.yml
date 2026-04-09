@@ -56,6 +56,7 @@
   register: _k3s_token_raw
   no_log: true
   changed_when: false
+  environment: "{{ _op_env }}"
   when:
     - _k3s_state == 'present'
     - k3s_ha | default(false)
