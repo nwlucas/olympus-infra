@@ -1,0 +1,67 @@
+---
+# Shared vars for all compute-hub nodes (applied to group: compute_hub)
+# Secrets are read at runtime from 1Password via `op read` in playbook pre_tasks.
+# 1Password service account token must be on each node at:
+#   /opt/ansible-pull/.op-service-account-token
+# and must have read/write access to the Dev vault.
+
+ansible_user: ansible
+
+# --- k3s HA cluster ---
+k3s_state: present
+k3s_ha: true
+k3s_version: "latest"
+# Virtual IP for kube-vip ARP leader election (within mgmt-hub advertised subnet)
+k3s_vip: "192.168.253.10"
+# Network interface for kube-vip (adjust if nodes use a different interface name)
+k3s_vip_interface: "ens18"
+# 1Password reference for the shared cluster token (create with: openssl rand -hex 32)
+k3s_token_op_ref: "op://Dev/compute-hub-k3s-token/password"
+# TLS SANs added to k3s API server cert — applied on primary at cluster-init.
+# Tailscale IPs/FQDNs are appended dynamically by the k3s role at run time.
+k3s_tls_san:
+  - "192.168.253.10"
+  - "compute-hub.nwlnexus.net"
+k3s_kubeconfig_users:
+  - ansible
+# Export kubeconfig to 1Password so management-hub Headlamp can import it
+k3s_kubeconfig_op_item: "compute-hub-kubeconfig"
+k3s_kubeconfig_op_vault: "Dev"
+# Patch kubeconfig server URL to VIP for remote kubectl access
+k3s_external_server: "compute-hub.nwlnexus.net"
+
+# --- Tailscale ---
+tailscale_state: present
+tailscale_ephemeral: false
+tailscale_accept_routes: true
+tailscale_tags:
+  - "tag:infra-server"
+  - "tag:k8s"
+# OAuth credentials fetched from 1Password at runtime (see playbook pre_tasks)
+tailscale_oauth_client_id: ""
+tailscale_oauth_client_secret: ""
+
+# --- ddclient (per-node DNS: onode-XXXXXX.nwlnexus.net) ---
+ddclient_state: present
+# cloudflare_api_token set at runtime from 1Password
+
+# --- ESO bootstrap (primary node only — playbook guards via k3s_primary) ---
+eso_namespace: external-secrets
+
+# --- cloudflared-k8s (primary node only) ---
+cloudflared_tunnel_name: compute-hub
+cloudflared_domain: "nwlnexus.net"
+cloudflared_bootstrap_only: true
+cloudflared_ingress_hostname: "ing.compute.nwlnexus.net"
+cloudflared_catch_all_service: "https://traefik.kube-system:443"
+
+# --- Flux CD (primary node only) ---
+flux_cluster_path: "clusters/compute-hub"
+flux_kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
+
+# --- ansible-pull (all nodes) ---
+# The ansible-pull role installs the cron that replaces the cloud-init systemd timer.
+ansible_pull_state: present
+ansible_pull_inventory: inventory/compute-hub.yml
+ansible_pull_playbook: playbooks/pull/compute-hub.yml
+ansible_pull_limit: "$(hostname -s)"

@@ -1,0 +1,22 @@
+---
+# Compute Hub — 3-node k3s HA cluster inventory
+# Used by ansible-pull with --limit $(hostname -s)
+# Each node runs: ansible-pull -U <repo> -i inventory/compute-hub.yml
+#   playbooks/pull/compute-hub.yml --limit $(hostname -s)
+# This causes Ansible to load group_vars/compute_hub.yml AND host_vars/<hostname>.yml correctly.
+
+all:
+  children:
+    compute_hub:
+      hosts:
+        onode-030c31:
+          ansible_host: 127.0.0.1   # ansible-pull runs locally on each node
+          ansible_connection: local
+        onode-0312ce:
+          ansible_host: 127.0.0.1
+          ansible_connection: local
+        onode-0314ac:
+          ansible_host: 127.0.0.1
+          ansible_connection: local
+      vars:
+        ansible_python_interpreter: /usr/bin/python3

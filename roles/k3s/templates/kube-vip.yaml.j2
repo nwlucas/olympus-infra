@@ -1,0 +1,65 @@
+---
+# kube-vip static pod manifest — deployed to all k3s server nodes
+# Manages a floating VIP (ARP mode) across control-plane nodes.
+# Written by Ansible before k3s starts so it's available on first boot.
+# Reference: https://kube-vip.io/docs/installation/static/
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kube-vip
+  namespace: kube-system
+spec:
+  containers:
+    - name: kube-vip
+      image: ghcr.io/kube-vip/kube-vip:v0.8.9
+      args:
+        - manager
+      env:
+        - name: vip_arp
+          value: "true"
+        - name: port
+          value: "6443"
+        - name: vip_interface
+          value: "{{ k3s_vip_interface }}"
+        - name: vip_cidr
+          value: "32"
+        - name: cp_enable
+          value: "true"
+        - name: cp_namespace
+          value: kube-system
+        - name: vip_leaderelection
+          value: "true"
+        - name: vip_leaseduration
+          value: "5"
+        - name: vip_renewdeadline
+          value: "3"
+        - name: vip_retryperiod
+          value: "1"
+        - name: address
+          value: "{{ k3s_vip }}"
+        - name: prometheus_server
+          value: ":2112"
+      volumeMounts:
+        - mountPath: /etc/kubernetes/admin.conf
+          name: kubeconfig
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+      securityContext:
+        capabilities:
+          add:
+            - NET_ADMIN
+            - NET_RAW
+            - SYS_TIME
+  hostAliases:
+    - hostnames:
+        - kubernetes
+      ip: 127.0.0.1
+  hostNetwork: true
+  priorityClassName: system-node-critical
+  volumes:
+    - name: kubeconfig
+      hostPath:
+        path: /etc/rancher/k3s/k3s.yaml
+        type: FileOrCreate

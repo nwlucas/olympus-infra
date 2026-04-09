@@ -1,0 +1,10 @@
+---
+# onode-030c31 — k3s primary / cluster-init node
+# LAN IP: 192.168.253.7
+
+k3s_primary: true
+k3s_init: true   # runs --cluster-init; only one node in the cluster should have this
+
+tailscale_hostname: onode-030c31
+ddclient_extra_fqdns:
+  - onode-030c31.nwlnexus.net

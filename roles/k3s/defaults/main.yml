@@ -12,6 +12,28 @@ k3s_tls_san: []
 # If set, patches kubeconfig server URL from 127.0.0.1:6443 to this FQDN.
 # Should match one of the entries in k3s_tls_san.
 k3s_external_server: ""
+
+# --- HA cluster settings (compute-hub) ---
+# Set k3s_ha: true to enable HA mode. All HA settings are ignored when false.
+k3s_ha: false
+# Whether this node is a server (true) vs standalone single-node install (false).
+# On the primary node: k3s_primary=true, k3s_init=true → runs --cluster-init.
+# On secondary nodes: k3s_primary=false, k3s_init=false → joins via VIP.
+k3s_primary: false
+k3s_init: false   # only one node in the cluster should have this true
+# Virtual IP managed by kube-vip (ARP mode). Must be within an L2-reachable subnet.
+k3s_vip: ""
+# Network interface kube-vip should bind to for ARP announcements.
+k3s_vip_interface: "eth0"
+# 1Password reference for the shared cluster token.
+# Created with: openssl rand -hex 32, stored in 1Password, referenced as:
+#   op://Dev/compute-hub-k3s-token/password
+k3s_token_op_ref: ""
+# Export kubeconfig to 1Password after cluster init (primary only).
+# Leave empty to skip. Enables management-hub Headlamp to import the cluster.
+k3s_kubeconfig_op_item: ""
+k3s_kubeconfig_op_vault: "Dev"
+
 # Colima (macOS) settings — used by darwin.yml in Phase 3
 colima_profile: olympus
 colima_runtime: k3s

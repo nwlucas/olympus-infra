@@ -8,6 +8,12 @@ ansible_pull_minute: "0"
 ansible_pull_inventory: ""   # e.g. inventory/management.yml
 ansible_pull_playbook: ""    # e.g. playbooks/pull/management.yml
 
+# Optional --limit flag for ansible-pull. When set, restricts playbook to this
+# host/pattern. For compute-hub nodes, set to "$(hostname -s)" so host_vars
+# and group_vars are loaded correctly in pull mode.
+# Leave empty for single-host inventories (management-hub, ai-hub).
+ansible_pull_limit: ""
+
 # macOS: path to ansible-pull binary installed via Homebrew
 ansible_pull_bin_macos: /opt/homebrew/bin/ansible-pull
 # Linux: usually on PATH for the ansible user

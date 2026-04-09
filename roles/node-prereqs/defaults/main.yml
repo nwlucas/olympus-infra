@@ -1,0 +1,8 @@
+---
+node_prereqs_state: present
+
+# Extra packages beyond the base set (merged at role run time)
+node_prereqs_extra_packages: []
+
+# Whether to install fail2ban for SSH brute-force protection
+node_prereqs_fail2ban: true

@@ -19,6 +19,8 @@
       -U {{ ansible_pull_repo }}
       -i {{ ansible_pull_inventory }}
       {{ ansible_pull_playbook }}
+      {% if ansible_pull_limit | default('') != '' %}--limit {{ ansible_pull_limit }}{% endif %}
+
       >> {{ ansible_pull_log_file }} 2>&1
     state: "{{ ansible_pull_state }}"
   become: true
