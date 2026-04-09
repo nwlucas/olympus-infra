@@ -284,7 +284,7 @@
     - tailscale_state == "present"
     - tailscale_is_running
     - not tailscale_ephemeral
-    - ts_device_info is defined and ts_device_info.status == 200
+    - ts_device_info is defined and ts_device_info is not skipped
     - ts_device_info.json.isEphemeral | default(false)
     - tailscale_oauth_client_id != ""
     - tailscale_oauth_client_secret != ""
@@ -312,7 +312,7 @@
   when:
     - tailscale_state == "present"
     - tailscale_is_running
-    - ts_oauth_reauth is defined and ts_oauth_reauth.status == 200
+    - ts_oauth_reauth is defined and ts_oauth_reauth is not skipped
 
 # Running `tailscale up --authkey` on an already-connected node re-authenticates
 # in-place — the node key (and therefore the Tailscale IP) is preserved.
