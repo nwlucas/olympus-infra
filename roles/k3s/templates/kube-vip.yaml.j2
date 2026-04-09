@@ -20,7 +20,7 @@ spec:
         - name: port
           value: "6443"
         - name: vip_interface
-          value: "{{ k3s_vip_interface }}"
+          value: "{{ _k3s_vip_interface | default(k3s_vip_interface) }}"
         - name: vip_cidr
           value: "32"
         - name: cp_enable

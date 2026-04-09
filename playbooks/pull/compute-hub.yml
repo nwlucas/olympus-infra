@@ -20,9 +20,12 @@
   gather_facts: true
 
   pre_tasks:
-    - name: Gather minimal facts
+    - name: Gather facts (min + network — needed for kube-vip interface detection)
       ansible.builtin.setup:
-        gather_subset: [min]
+        gather_subset:
+          - "!all"
+          - min
+          - network
 
     # ── Read OP service account token from file written by cloud-init ──────────
     - name: Read OP service account token
