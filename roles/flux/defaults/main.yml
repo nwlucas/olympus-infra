@@ -62,3 +62,12 @@ flux_headlamp_combined_kubeconfig_namespace: "headlamp"
 #     - ai-hub-kubeconfig
 #     - node-hub-kubeconfig
 flux_headlamp_secondary_kubeconfig_1password_items: []
+
+# Context renames applied to the combined kubeconfig after merging.
+# Maps original context name → desired display name in Headlamp.
+# k3s defaults to "default"; OrbStack defaults to "orbstack".
+# Example:
+#   flux_headlamp_context_renames:
+#     default: management-hub
+#     orbstack: ai-hub
+flux_headlamp_context_renames: {}

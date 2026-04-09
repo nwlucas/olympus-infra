@@ -481,6 +481,21 @@
     - flux_headlamp_combined_kubeconfig_secret | default('') != ''
     - _flux_kubeconfig_incluster is defined
 
+- name: Rename contexts in combined kubeconfig
+  ansible.builtin.command: >
+    kubectl config --kubeconfig=/tmp/headlamp-combined.yaml
+    rename-context {{ item.key }} {{ item.value }}
+  loop: "{{ flux_headlamp_context_renames | default({}) | dict2items }}"
+  delegate_to: localhost
+  become: false
+  changed_when: true
+  failed_when: false
+  when:
+    - flux_state == 'present'
+    - flux_headlamp_combined_kubeconfig_secret | default('') != ''
+    - flux_headlamp_context_renames | default({}) | length > 0
+    - _flux_kubeconfig_incluster is defined
+
 - name: Create or update Headlamp combined kubeconfig Secret
   ansible.builtin.shell: |
     set -o pipefail
