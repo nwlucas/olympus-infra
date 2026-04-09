@@ -293,6 +293,46 @@
   when: _k3s_state == 'present'
   failed_when: false
 
+# ── CNI bridge fixer (workaround for k3s embedded CNI skipping bridge attach) ─
+- name: Deploy k3s-cni-bridge-fixer script
+  ansible.builtin.template:
+    src: k3s-cni-bridge-fixer.sh.j2
+    dest: /usr/local/bin/k3s-cni-bridge-fixer.sh
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  when: _k3s_state == 'present'
+
+- name: Deploy k3s-cni-bridge-fixer systemd service
+  ansible.builtin.template:
+    src: k3s-cni-bridge-fixer.service.j2
+    dest: /etc/systemd/system/k3s-cni-bridge-fixer.service
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  register: _cni_fixer_unit
+  when: _k3s_state == 'present'
+
+- name: Enable and start k3s-cni-bridge-fixer
+  ansible.builtin.systemd:
+    name: k3s-cni-bridge-fixer.service
+    state: "{{ 'restarted' if _cni_fixer_unit.changed else 'started' }}"
+    enabled: true
+    daemon_reload: true
+  become: true
+  when: _k3s_state == 'present'
+
+- name: Stop and remove k3s-cni-bridge-fixer (state=absent)
+  ansible.builtin.systemd:
+    name: k3s-cni-bridge-fixer.service
+    state: stopped
+    enabled: false
+  become: true
+  failed_when: false
+  when: _k3s_state == 'absent'
+
 - name: Create .kube directories for users
   ansible.builtin.file:
     path: "/home/{{ item }}/.kube"
