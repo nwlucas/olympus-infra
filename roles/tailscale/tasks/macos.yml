@@ -38,8 +38,8 @@
 - name: Wait for Tailscale daemon to respond after service start
   ansible.builtin.command: tailscale status --json
   register: ts_status_pre
-  retries: 10
-  delay: 3
+  retries: 20
+  delay: 5
   until: ts_status_pre.rc == 0
   failed_when: false
   changed_when: false
