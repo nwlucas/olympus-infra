@@ -43,6 +43,35 @@
     state: "{{ 'started' if tailscale_state == 'present' else 'stopped' }}"
   become: true
 
+# ── Prevent systemd-networkd from managing tailscale0 ────────────────────────
+# On Ubuntu with cloud-init netplan (match: driver: "*"), networkd picks up
+# tailscale0 via the wildcard, runs DHCPv6, and prevents Tailscale from
+# assigning its 100.x.x.x address. The 05- prefix ensures this file sorts
+# before the netplan-generated 10-netplan-id0.network and wins.
+- name: Tell systemd-networkd to leave tailscale0 unmanaged
+  ansible.builtin.copy:
+    dest: /etc/systemd/network/05-tailscale0.network
+    content: |
+      [Match]
+      Name=tailscale0
+
+      [Network]
+      Unmanaged=yes
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Reload systemd-networkd
+  when: tailscale_state == "present"
+
+- name: Remove legacy tailscale0 networkd override (wrong priority/section)
+  ansible.builtin.file:
+    path: /etc/systemd/network/20-tailscale0.network
+    state: absent
+  become: true
+  notify: Reload systemd-networkd
+  when: tailscale_state == "present"
+
 # ── IP forwarding (required for subnet routing and exit node) ─────────────────
 # Must be applied before `tailscale up` so the kernel can forward packets as
 # soon as routes are advertised. Uses a dedicated sysctl drop-in so it
