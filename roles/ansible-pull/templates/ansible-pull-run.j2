@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Managed by Ansible — do not edit manually
+set -euo pipefail
+
+OP_TOKEN_FILE="/opt/ansible-pull/.op-service-account-token"
+LOG_FILE="{{ ansible_pull_log_file }}"
+
+mkdir -p "{{ ansible_pull_log_dir }}"
+
+if [[ ! -f "$OP_TOKEN_FILE" ]]; then
+  echo "$(date -u '+%Y-%m-%d %H:%M:%S') [WARN] OP token not found at $OP_TOKEN_FILE — skipping run until bootstrap places it" | tee -a "$LOG_FILE" >&2
+  exit 0
+fi
+
+export OP_SERVICE_ACCOUNT_TOKEN
+OP_SERVICE_ACCOUNT_TOKEN=$(cat "$OP_TOKEN_FILE")
+
+# Redirect all output to log file from this point on
+exec 1>>"$LOG_FILE" 2>&1
+
+echo "Starting Ansible Pull at $(date -u '+%Y-%m-%d %H:%M:%S')"
+
+exec {{ ansible_pull_bin_linux }} \
+  -U {{ ansible_pull_repo }} \
+  -i {{ ansible_pull_inventory }} \
+  {{ ansible_pull_playbook }} \
+{% if ansible_pull_limit | default('') != '' %}  --limit {{ ansible_pull_limit }}{% endif %}

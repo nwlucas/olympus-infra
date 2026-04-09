@@ -1,8 +1,7 @@
 ---
 ansible_pull_state: present
 ansible_pull_repo: https://github.com/nwlucas/olympus-infra.git
-ansible_pull_hour: "2"
-ansible_pull_minute: "0"
+ansible_pull_interval: 1h
 
 # Set per-host in inventory group_vars
 ansible_pull_inventory: ""   # e.g. inventory/management.yml
@@ -20,4 +19,4 @@ ansible_pull_bin_macos: /opt/homebrew/bin/ansible-pull
 ansible_pull_bin_linux: /usr/bin/ansible-pull
 
 ansible_pull_log_dir: /var/log/ansible-pull
-ansible_pull_log_file: "{{ ansible_pull_log_dir }}/ansible.log"
+ansible_pull_log_file: "{{ ansible_pull_log_dir }}/run.log"

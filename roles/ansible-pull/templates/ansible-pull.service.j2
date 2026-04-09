@@ -1,0 +1,26 @@
+# Managed by Ansible — do not edit manually
+[Unit]
+Description=Ansible Pull — Olympus configuration management
+Documentation=https://github.com/nwlucas/olympus-sdk
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ansible
+Group=ansible
+WorkingDirectory=/opt/ansible-pull
+ExecStart=/opt/ansible-pull/ansible-pull-run
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ansible-pull
+
+# ansible-pull needs full system access to manage the host
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectSystem=false
+ProtectHome=true
+ReadWritePaths=/opt/ansible-pull {{ ansible_pull_log_dir }}
+
+[Install]
+WantedBy=multi-user.target

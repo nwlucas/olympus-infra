@@ -8,19 +8,81 @@
     update_cache: true
   become: true
 
-- name: Schedule ansible-pull via crontab (Linux)
-  ansible.builtin.cron:
-    name: olympus-ansible-pull
-    user: "{{ ansible_user }}"
-    hour: "{{ ansible_pull_hour }}"
-    minute: "{{ ansible_pull_minute }}"
-    job: >-
-      {{ ansible_pull_bin_linux }}
-      -U {{ ansible_pull_repo }}
-      -i {{ ansible_pull_inventory }}
-      {{ ansible_pull_playbook }}
-      {% if ansible_pull_limit | default('') != '' %}--limit {{ ansible_pull_limit }}{% endif %}
+# ── present path ──────────────────────────────────────────────────────────────
 
-      >> {{ ansible_pull_log_file }} 2>&1
-    state: "{{ ansible_pull_state }}"
+- name: Ensure /opt/ansible-pull and log directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /opt/ansible-pull, owner: ansible, mode: '0750' }
+    - { path: "{{ ansible_pull_log_dir }}", owner: ansible, mode: '0755' }
   become: true
+  when: ansible_pull_state == 'present'
+
+- name: Deploy ansible-pull-run wrapper script
+  ansible.builtin.template:
+    src: ansible-pull-run.j2
+    dest: /opt/ansible-pull/ansible-pull-run
+    owner: ansible
+    group: ansible
+    mode: '0750'
+  become: true
+  when: ansible_pull_state == 'present'
+
+- name: Deploy ansible-pull systemd service unit
+  ansible.builtin.template:
+    src: ansible-pull.service.j2
+    dest: /etc/systemd/system/ansible-pull.service
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  register: _service_unit
+  when: ansible_pull_state == 'present'
+
+- name: Deploy ansible-pull systemd timer unit
+  ansible.builtin.template:
+    src: ansible-pull.timer.j2
+    dest: /etc/systemd/system/ansible-pull.timer
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  register: _timer_unit
+  when: ansible_pull_state == 'present'
+
+- name: Reload systemd and ensure timer is enabled + running
+  ansible.builtin.systemd:
+    name: ansible-pull.timer
+    state: "{{ 'restarted' if (_service_unit.changed or _timer_unit.changed) else 'started' }}"
+    enabled: true
+    daemon_reload: true
+  become: true
+  when: ansible_pull_state == 'present'
+
+# ── absent path ───────────────────────────────────────────────────────────────
+
+- name: Stop and disable ansible-pull timer (state=absent)
+  ansible.builtin.systemd:
+    name: ansible-pull.timer
+    state: stopped
+    enabled: false
+    daemon_reload: true
+  become: true
+  failed_when: false
+  when: ansible_pull_state == 'absent'
+
+- name: Remove ansible-pull wrapper and unit files (state=absent)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /opt/ansible-pull/ansible-pull-run
+    - /etc/systemd/system/ansible-pull.service
+    - /etc/systemd/system/ansible-pull.timer
+  become: true
+  when: ansible_pull_state == 'absent'
