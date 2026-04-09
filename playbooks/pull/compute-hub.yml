@@ -49,7 +49,7 @@
     #   cloudflare-account       → api_token           (cloudflared/externaldns: read/write)
     #   cloudflare-account       → account_id          (cloudflared: account ID)
     #   olympus-flux-gh-pat      → token               (Flux bootstrap PAT)
-    #   1password-connect-token  → credential          (ESO connect token)
+    #   olympus-access-token     → credential          (ESO connect token)
     #   olympus-edge-service-account: token on-disk at /opt/ansible-pull/.op-service-account-token
     - name: Fetch secrets from 1Password
       ansible.builtin.command: "op read '{{ item.ref }}'"
@@ -62,7 +62,7 @@
         - { name: cloudflared_api_token,          ref: "op://Dev/cloudflare-account/api_token" }
         - { name: cloudflared_account_id,         ref: "op://Dev/cloudflare-account/account_id" }
         - { name: flux_github_token,              ref: "op://Dev/olympus-flux-gh-pat/token" }
-        - { name: eso_connect_token,              ref: "op://Dev/1password-connect-token/credential" }
+        - { name: eso_connect_token,              ref: "op://Dev/olympus-access-token/credential" }
       no_log: true
       changed_when: false
 
