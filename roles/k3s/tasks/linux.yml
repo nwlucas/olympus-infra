@@ -399,12 +399,28 @@
       register: _k3s_kubeconfig_b64
       become: true
 
-    - name: Patch kubeconfig server URL to external FQDN
+    - name: Patch kubeconfig server URL and rename context/cluster/user
+      ansible.builtin.shell: |
+        python3 - << 'PYEOF'
+        import yaml, sys
+        kc = yaml.safe_load("""{{ _k3s_kubeconfig_b64.content | b64decode | replace('"', '\\"') }}""")
+        ctx  = "{{ k3s_context_name | default(k3s_kubeconfig_op_item) }}"
+        kc['clusters'][0]['cluster']['server'] = "https://{{ k3s_external_server | default(k3s_vip) }}:6443"
+        kc['clusters'][0]['name']                     = ctx + '-cluster'
+        kc['contexts'][0]['context']['cluster']       = ctx + '-cluster'
+        kc['contexts'][0]['context']['user']          = ctx + '-user'
+        kc['contexts'][0]['name']                     = ctx
+        kc['current-context']                         = ctx
+        kc['users'][0]['name']                        = ctx + '-user'
+        print(yaml.dump(kc, default_flow_style=False))
+        PYEOF
+      register: _k3s_kubeconfig_patched_raw
+      become: true
+      changed_when: false
+
+    - name: Set patched kubeconfig fact
       ansible.builtin.set_fact:
-        _k3s_kubeconfig_patched: >-
-          {{ (_k3s_kubeconfig_b64.content | b64decode)
-             | regex_replace('server: https://127\\.0\\.0\\.1:6443',
-                             'server: https://' + (k3s_external_server | default(k3s_vip)) + ':6443') }}
+        _k3s_kubeconfig_patched: "{{ _k3s_kubeconfig_patched_raw.stdout }}"
 
     - name: Check if kubeconfig document already exists in 1Password
       ansible.builtin.command: >

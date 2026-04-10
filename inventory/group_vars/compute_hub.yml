@@ -28,6 +28,8 @@ k3s_kubeconfig_users:
 # Export kubeconfig to 1Password so management-hub Headlamp can import it
 k3s_kubeconfig_op_item: "compute-hub-kubeconfig"
 k3s_kubeconfig_op_vault: "Dev"
+# Context/cluster/user names in the exported kubeconfig
+k3s_context_name: "compute-hub"
 # Patch kubeconfig server URL to VIP for remote kubectl access
 k3s_external_server: "compute-hub.nwlnexus.net"
 
