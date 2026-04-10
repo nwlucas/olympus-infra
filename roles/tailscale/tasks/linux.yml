@@ -55,7 +55,7 @@
       [Match]
       Name=tailscale0
 
-      [Network]
+      [Link]
       Unmanaged=yes
     owner: root
     group: root
