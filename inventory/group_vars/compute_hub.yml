@@ -34,7 +34,7 @@ k3s_external_server: "compute-hub.nwlnexus.net"
 # --- Tailscale ---
 tailscale_state: present
 tailscale_ephemeral: false
-tailscale_accept_routes: true
+tailscale_accept_routes: false
 # Ubuntu 25.04 systemd-resolved conflicts with tailscaled DNS management.
 # Symptom: "setLinkDNS: Link tailscale0 is managed" health warning.
 tailscale_accept_dns: false
