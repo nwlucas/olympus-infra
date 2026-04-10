@@ -117,8 +117,7 @@
       {{ ['--advertise-tags=' + (tailscale_tags | join(','))]
          if (tailscale_tags | default([]) | length > 0) else [] }}
     _ts_routes_argv: >-
-      {{ ['--advertise-routes=' + (tailscale_advertise_routes | join(','))]
-         if (tailscale_advertise_routes | default([]) | length > 0) else [] }}
+      {{ ['--advertise-routes=' + (tailscale_advertise_routes | default([]) | join(','))] }}
   when: tailscale_state == "present"
 
 # ── Initial join (not yet connected) ──────────────────────────────────────────
