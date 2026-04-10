@@ -31,7 +31,7 @@ colima_k3s_tls_san: ""  # Set to ai_hub_tailscale_ip after Phase 2→3 handoff
 # OrbStack k8s uses self-signed certs, so insecure-skip-tls-verify is required.
 # Primary kubeconfig uses local IPv4 (routable via Tailscale subnet routing).
 # Tailnet kubeconfig uses Tailscale MagicDNS FQDN (auto-resolved by flux role).
-flux_kubeconfig_path: "/Users/ansible/.orbstack/k8s/config.yml"
+flux_kubeconfig_path: "/Users/nwilliams-lucas/.orbstack/k8s/config.yml"
 flux_kubeconfig_1password_item: "ai-hub-kubeconfig"
 flux_kubeconfig_1password_vault: "Dev"
 flux_kubeconfig_context_name: "ai-hub"
