@@ -27,5 +27,19 @@ colima_state: present
 colima_profile: olympus
 colima_k3s_tls_san: ""  # Set to ai_hub_tailscale_ip after Phase 2→3 handoff
 
+# --- Flux kubeconfig export to 1Password ---
+# OrbStack k8s uses self-signed certs, so insecure-skip-tls-verify is required.
+# Primary kubeconfig uses local IPv4 (routable via Tailscale subnet routing).
+# Tailnet kubeconfig uses Tailscale MagicDNS FQDN (auto-resolved by flux role).
+flux_kubeconfig_path: "/Users/ansible/.orbstack/k8s/config.yml"
+flux_kubeconfig_1password_item: "ai-hub-kubeconfig"
+flux_kubeconfig_1password_vault: "Dev"
+flux_kubeconfig_context_name: "ai-hub"
+flux_kubeconfig_external_server: "192.168.253.5"
+flux_kubeconfig_external_port: 6443
+flux_kubeconfig_insecure_tls: true
+flux_tailnet_kubeconfig_1password_item: "ai-hub-kubeconfig-tailnet"
+# flux_tailnet_server left empty: flux role auto-resolves to Tailscale MagicDNS FQDN
+
 # Vibe Kanban (managed by ArgoCD)
 vibe_kanban_state: present

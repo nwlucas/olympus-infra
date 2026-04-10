@@ -19,3 +19,15 @@ onepassword_connect_state: present
 
 # ArgoCD — still managed by Ansible (prerequisite for GitOps)
 argocd_state: present
+
+# --- Flux kubeconfig export to 1Password ---
+# Uploads a patched kubeconfig (Tailscale IPv4 as server, proper context/cluster/user names)
+# so the kubeconfig-merger can include management-hub in the Headlamp combined kubeconfig.
+flux_kubeconfig_1password_item: "management-hub-kubeconfig"
+flux_kubeconfig_1password_vault: "Dev"
+flux_kubeconfig_context_name: "management-hub"
+# External server left empty: flux role auto-resolves to Tailscale IPv4 (already in k3s TLS SAN)
+flux_kubeconfig_external_server: ""
+flux_kubeconfig_external_port: 6443
+flux_kubeconfig_insecure_tls: false
+flux_kubeconfig_path: "/etc/rancher/k3s/k3s.yaml"
