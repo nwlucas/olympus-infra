@@ -9,6 +9,21 @@
     - docker-compose
   become: false
 
+- name: Initialize Colima VM with configured resources (first run only)
+  ansible.builtin.command: >
+    /opt/homebrew/bin/colima start
+    --cpu {{ colima_cpu }}
+    --memory {{ colima_memory }}
+    --disk {{ colima_disk }}
+    --foreground=false
+  register: _colima_init
+  changed_when: _colima_init.rc == 0
+  failed_when:
+    - _colima_init.rc != 0
+    - "'already running' not in _colima_init.stderr"
+  become: false
+  when: colima_state == "present"
+
 - name: Start Colima as user LaunchAgent (brew services)
   ansible.builtin.command: >
     /opt/homebrew/bin/brew services start colima
@@ -22,7 +37,8 @@
 
 - name: Stop and remove Colima
   ansible.builtin.command: /opt/homebrew/bin/brew services stop colima
+  register: _colima_stop
   failed_when: false
-  changed_when: true
+  changed_when: "'Successfully stopped' in _colima_stop.stdout"
   become: false
   when: colima_state == "absent"
