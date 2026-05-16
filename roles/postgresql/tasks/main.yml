@@ -10,9 +10,11 @@
     /opt/homebrew/bin/brew services start postgresql@{{ postgresql_version }}
   register: _pg_start
   changed_when: "'Successfully started' in _pg_start.stdout"
+  # "Bootstrap failed: 5" = launchctl error when LaunchAgent is already loaded
   failed_when:
     - _pg_start.rc != 0
     - "'already started' not in (_pg_start.stderr | default(''))"
+    - "'Bootstrap failed' not in (_pg_start.stderr | default(''))"
   become: false
   when: postgresql_state == "present"
 

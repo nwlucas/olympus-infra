@@ -29,9 +29,12 @@
     /opt/homebrew/bin/brew services start colima
   register: _colima_start
   changed_when: "'Successfully started' in _colima_start.stdout"
+  # "Bootstrap failed: 5" = launchctl error when LaunchAgent is already
+  # loaded (re-runs after the first successful bootstrap)
   failed_when:
     - _colima_start.rc != 0
     - "'already started' not in (_colima_start.stderr | default(''))"
+    - "'Bootstrap failed' not in (_colima_start.stderr | default(''))"
   become: false
   when: colima_state == "present"
 
