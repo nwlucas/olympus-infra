@@ -50,6 +50,15 @@
   notify: Restart PostgreSQL
   when: postgresql_state == "present"
 
+- name: Set wal_level = logical (required by ElectricSQL)
+  ansible.builtin.lineinfile:
+    path: "{{ postgresql_conf_dest }}"
+    regexp: "^#?wal_level"
+    line: "wal_level = logical"
+    state: present
+  notify: Restart PostgreSQL
+  when: postgresql_state == "present"
+
 - name: Deploy pg_hba.conf
   ansible.builtin.template:
     src: pg_hba.conf.j2
@@ -97,7 +106,8 @@
     - postgresql_state == "present"
     - (_pg_db_check.stdout | default('') | trim) != "1"
 
-- name: Create or update vibe_kanban user with password
+- name: Create or update vibe_kanban user (with REPLICATION for Electric)
+  # REPLICATION attribute is required by ElectricSQL (uses logical replication)
   ansible.builtin.command:
     argv:
       - /opt/homebrew/opt/postgresql@{{ postgresql_version }}/bin/psql
@@ -111,14 +121,36 @@
       - |
         DO $$ BEGIN
           IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vibe_kanban') THEN
-            CREATE USER vibe_kanban WITH PASSWORD '{{ _pg_vk_password.stdout | trim }}';
+            CREATE USER vibe_kanban WITH REPLICATION PASSWORD '{{ _pg_vk_password.stdout | trim }}';
           ELSE
-            ALTER USER vibe_kanban WITH PASSWORD '{{ _pg_vk_password.stdout | trim }}';
+            ALTER USER vibe_kanban WITH REPLICATION PASSWORD '{{ _pg_vk_password.stdout | trim }}';
           END IF;
         END $$;
   register: _pg_user_upsert
   no_log: true
   changed_when: true
+  become: false
+  when: postgresql_state == "present"
+
+- name: Make vibe_kanban user the owner of vibe_kanban database
+  # Ownership grants full schema rights (PostgreSQL 15+ locks down 'public' by default)
+  ansible.builtin.command: >
+    /opt/homebrew/opt/postgresql@{{ postgresql_version }}/bin/psql
+    -h 127.0.0.1 -p {{ postgresql_port }} -d postgres
+    -c "ALTER DATABASE vibe_kanban OWNER TO vibe_kanban"
+  register: _pg_owner
+  changed_when: "'ALTER DATABASE' in (_pg_owner.stdout | default(''))"
+  become: false
+  when: postgresql_state == "present"
+
+- name: Grant all on schema public to vibe_kanban user
+  # Needed for remote-server's diesel migrations (PG15+ public schema lockdown)
+  ansible.builtin.command: >
+    /opt/homebrew/opt/postgresql@{{ postgresql_version }}/bin/psql
+    -h 127.0.0.1 -p {{ postgresql_port }} -d vibe_kanban
+    -c "GRANT ALL ON SCHEMA public TO vibe_kanban"
+  register: _pg_schema_grant
+  changed_when: "'GRANT' in (_pg_schema_grant.stdout | default(''))"
   become: false
   when: postgresql_state == "present"
 

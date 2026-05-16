@@ -4,13 +4,26 @@
     name: pipx
     state: "{{ 'present' if litellm_state == 'present' else 'absent' }}"
 
-- name: Install LiteLLM via pipx
-  ansible.builtin.command: /opt/homebrew/bin/pipx install litellm
+- name: Install LiteLLM via pipx (with proxy extras)
+  # [proxy] extras include websockets, uvicorn, fastapi — required by the proxy
+  # server. Plain `pipx install litellm` results in ModuleNotFoundError at startup.
+  ansible.builtin.command: /opt/homebrew/bin/pipx install "litellm[proxy]"
   register: litellm_install
   changed_when: "'installed package litellm' in litellm_install.stdout"
   failed_when:
     - litellm_install.rc != 0
-    - "'already installed' not in litellm_install.stdout"
+    - "'already installed' not in (litellm_install.stdout | default(''))"
+  when: litellm_state == "present"
+
+- name: Ensure proxy extras are present (pipx inject for pre-existing installs)
+  # If litellm was previously installed without [proxy], inject missing deps
+  ansible.builtin.command: /opt/homebrew/bin/pipx inject litellm 'litellm[proxy]'
+  register: litellm_inject
+  changed_when: "'injected package' in (litellm_inject.stdout | default(''))"
+  failed_when:
+    - litellm_inject.rc != 0
+    - "'already in package' not in (litellm_inject.stderr | default(''))"
+    - "'already satisfied' not in (litellm_inject.stdout | default(''))"
   when: litellm_state == "present"
 
 - name: Uninstall LiteLLM via pipx
