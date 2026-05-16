@@ -58,6 +58,39 @@
     OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token }}"
   when: vibe_kanban_state == "present"
 
+- name: Vibe Kanban — fetch GitHub Olympus token from 1Password Connect
+  ansible.builtin.command:
+    cmd: /opt/homebrew/bin/op read "op://Dev/vibe-kanban/github-olympus-token"
+  register: _vk_github_olympus_token
+  no_log: true
+  changed_when: false
+  environment:
+    OP_CONNECT_HOST: "{{ onepassword_connect_host }}"
+    OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token }}"
+  when: vibe_kanban_state == "present"
+
+- name: Vibe Kanban — fetch GitHub Work token from 1Password Connect
+  ansible.builtin.command:
+    cmd: /opt/homebrew/bin/op read "op://Dev/vibe-kanban/github-work-token"
+  register: _vk_github_work_token
+  no_log: true
+  changed_when: false
+  environment:
+    OP_CONNECT_HOST: "{{ onepassword_connect_host }}"
+    OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token }}"
+  when: vibe_kanban_state == "present"
+
+- name: Vibe Kanban — fetch LiteLLM master key from 1Password Connect
+  ansible.builtin.command:
+    cmd: /opt/homebrew/bin/op read "op://Dev/litellm/master-key"
+  register: _vk_anthropic_api_key
+  no_log: true
+  changed_when: false
+  environment:
+    OP_CONNECT_HOST: "{{ onepassword_connect_host }}"
+    OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token }}"
+  when: vibe_kanban_state == "present"
+
 - name: Vibe Kanban — set secret facts
   ansible.builtin.set_fact:
     _vk_secrets:
@@ -66,6 +99,9 @@
       electric_password: "{{ _vk_electric_password.stdout | trim }}"
       google_client_id: "{{ _vk_google_client_id.stdout | trim }}"
       google_client_secret: "{{ _vk_google_client_secret.stdout | trim }}"
+      github_olympus_token: "{{ _vk_github_olympus_token.stdout | trim }}"
+      github_work_token: "{{ _vk_github_work_token.stdout | trim }}"
+      anthropic_api_key: "{{ _vk_anthropic_api_key.stdout | trim }}"
   no_log: true
   when: vibe_kanban_state == "present"
 
@@ -87,6 +123,14 @@
     owner: "{{ ansible_user }}"
     mode: "0640"
   become: true
+  when: vibe_kanban_state == "present"
+
+- name: Vibe Kanban — copy worker-init.sh
+  ansible.builtin.copy:
+    src: worker-init.sh
+    dest: "{{ vibe_kanban_compose_dir }}/worker-init.sh"
+    owner: "{{ ansible_user }}"
+    mode: "0755"
   when: vibe_kanban_state == "present"
 
 - name: Vibe Kanban — write .env
