@@ -4,6 +4,11 @@
     name: pipx
     state: "{{ 'present' if litellm_state == 'present' else 'absent' }}"
 
+- name: Install python@3.13 via Homebrew (LiteLLM dep — orjson/pyo3 doesn't support 3.14 yet)
+  community.general.homebrew:
+    name: python@3.13
+    state: "{{ 'present' if litellm_state == 'present' else 'absent' }}"
+
 - name: Check if LiteLLM proxy server module is importable
   # An existing 'pipx install litellm' (no extras) is missing websockets/uvicorn/fastapi
   # and crashes at startup. Detect that state explicitly.
@@ -14,7 +19,7 @@
   when: litellm_state == "present"
 
 - name: Reinstall LiteLLM with [proxy] extras if proxy deps are missing
-  ansible.builtin.command: /opt/homebrew/bin/pipx install --force "litellm[proxy]"
+  ansible.builtin.command: /opt/homebrew/bin/pipx install --force --python /opt/homebrew/opt/python@3.13/bin/python3.13 "litellm[proxy]"
   register: litellm_reinstall
   changed_when: "'installed package litellm' in (litellm_reinstall.stdout | default(''))"
   when:
@@ -22,7 +27,7 @@
     - _litellm_websockets_check.rc != 0
 
 - name: Install LiteLLM via pipx with [proxy] extras (fresh install)
-  ansible.builtin.command: /opt/homebrew/bin/pipx install "litellm[proxy]"
+  ansible.builtin.command: /opt/homebrew/bin/pipx install --python /opt/homebrew/opt/python@3.13/bin/python3.13 "litellm[proxy]"
   register: litellm_install
   changed_when: "'installed package litellm' in (litellm_install.stdout | default(''))"
   failed_when:
