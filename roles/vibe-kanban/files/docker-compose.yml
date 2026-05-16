@@ -64,6 +64,7 @@ services:
       - "8082:8082"
     environment:
       DATABASE_URL: postgres://vibe_kanban:${DB_PASSWORD}@host.docker.internal:5432/vibe_kanban
+      VIBEKANBAN_REMOTE_JWT_SECRET: ${VIBEKANBAN_REMOTE_JWT_SECRET}
 
 volumes:
   worker-home:
