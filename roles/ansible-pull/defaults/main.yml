@@ -3,6 +3,11 @@ ansible_pull_state: present
 ansible_pull_repo: https://github.com/nwlucas/olympus-infra.git
 ansible_pull_interval: 1h
 
+# macOS LaunchDaemon schedule (StartCalendarInterval). Default: run daily at 03:00 local.
+# Override per-host in inventory if you need a different time.
+ansible_pull_hour: 3
+ansible_pull_minute: 0
+
 # Set per-host in inventory group_vars
 ansible_pull_inventory: ""   # e.g. inventory/management.yml
 ansible_pull_playbook: ""    # e.g. playbooks/pull/management.yml
