@@ -1,0 +1,28 @@
+---
+- name: Install Colima and Docker tooling via Homebrew
+  community.general.homebrew:
+    name: "{{ item }}"
+    state: "{{ 'present' if colima_state == 'present' else 'absent' }}"
+  loop:
+    - colima
+    - docker
+    - docker-compose
+  become: false
+
+- name: Start Colima as user LaunchAgent (brew services)
+  ansible.builtin.command: >
+    /opt/homebrew/bin/brew services start colima
+  register: _colima_start
+  changed_when: "'Successfully started' in _colima_start.stdout"
+  failed_when:
+    - _colima_start.rc != 0
+    - "'already started' not in _colima_start.stderr"
+  become: false
+  when: colima_state == "present"
+
+- name: Stop and remove Colima
+  ansible.builtin.command: /opt/homebrew/bin/brew services stop colima
+  failed_when: false
+  changed_when: true
+  become: false
+  when: colima_state == "absent"
