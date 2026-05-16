@@ -1,0 +1,6 @@
+---
+- name: Restart PostgreSQL
+  ansible.builtin.command: >
+    /opt/homebrew/bin/brew services restart postgresql@{{ postgresql_version }}
+  become: false
+  changed_when: true

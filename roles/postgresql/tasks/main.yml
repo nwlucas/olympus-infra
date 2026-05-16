@@ -1,0 +1,111 @@
+---
+- name: Install postgresql@{{ postgresql_version }} via Homebrew
+  community.general.homebrew:
+    name: "postgresql@{{ postgresql_version }}"
+    state: "{{ 'present' if postgresql_state == 'present' else 'absent' }}"
+  become: false
+
+- name: Start PostgreSQL via brew services
+  ansible.builtin.command: >
+    /opt/homebrew/bin/brew services start postgresql@{{ postgresql_version }}
+  register: _pg_start
+  changed_when: "'Successfully started' in _pg_start.stdout"
+  failed_when:
+    - _pg_start.rc != 0
+    - "'already started' not in (_pg_start.stderr | default(''))"
+  become: false
+  when: postgresql_state == "present"
+
+- name: Wait for PostgreSQL to accept connections
+  # postgresql@16 is keg-only — binaries are NOT in /opt/homebrew/bin
+  ansible.builtin.command: >
+    /opt/homebrew/opt/postgresql@{{ postgresql_version }}/bin/pg_isready
+    -h 127.0.0.1 -p {{ postgresql_port }}
+  register: _pg_ready
+  until: _pg_ready.rc == 0
+  retries: 12
+  delay: 5
+  changed_when: false
+  become: false
+  when: postgresql_state == "present"
+
+- name: Patch listen_addresses in postgresql.conf
+  # Do NOT replace the full file — Homebrew ships 250+ lines of tuning
+  ansible.builtin.lineinfile:
+    path: "{{ postgresql_conf_dest }}"
+    regexp: "^#?listen_addresses"
+    line: "listen_addresses = '*'"
+    state: present
+  notify: Restart PostgreSQL
+  when: postgresql_state == "present"
+
+- name: Patch port in postgresql.conf
+  ansible.builtin.lineinfile:
+    path: "{{ postgresql_conf_dest }}"
+    regexp: "^#?port ="
+    line: "port = {{ postgresql_port }}"
+    state: present
+  notify: Restart PostgreSQL
+  when: postgresql_state == "present"
+
+- name: Deploy pg_hba.conf
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: "{{ postgresql_hba_dest }}"
+    owner: "{{ ansible_user }}"
+    mode: "0600"
+  notify: Restart PostgreSQL
+  when: postgresql_state == "present"
+
+- name: Install psycopg2-binary for community.postgresql modules
+  # community.postgresql modules require psycopg2 on the REMOTE host (ai-hub)
+  # --break-system-packages required on Python 3.12+ (PEP 668 enforcement)
+  ansible.builtin.pip:
+    name: psycopg2-binary
+    state: present
+    extra_args: "--break-system-packages"
+  become: false
+  when: postgresql_state == "present"
+
+- name: Fetch vibe-kanban DB password from 1Password Connect
+  ansible.builtin.command: /opt/homebrew/bin/op read "op://Dev/vibe-kanban/db-password"
+  register: _pg_vk_password
+  no_log: true
+  changed_when: false
+  environment:
+    OP_CONNECT_HOST: "{{ onepassword_connect_host }}"
+    OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token }}"
+  when: postgresql_state == "present"
+
+- name: Create vibe_kanban database
+  community.postgresql.postgresql_db:
+    name: vibe_kanban
+    state: present
+    login_host: 127.0.0.1
+    login_port: "{{ postgresql_port }}"
+    # Homebrew creates a superuser matching the OS user, NOT "postgres"
+    login_user: "{{ ansible_user }}"
+  become: false
+  when: postgresql_state == "present"
+
+- name: Create vibe_kanban user
+  community.postgresql.postgresql_user:
+    name: vibe_kanban
+    password: "{{ _pg_vk_password.stdout | trim }}"
+    db: vibe_kanban
+    priv: ALL
+    login_host: 127.0.0.1
+    login_port: "{{ postgresql_port }}"
+    login_user: "{{ ansible_user }}"
+  no_log: true
+  become: false
+  when: postgresql_state == "present"
+
+- name: Stop and remove PostgreSQL
+  ansible.builtin.command: >
+    /opt/homebrew/bin/brew services stop postgresql@{{ postgresql_version }}
+  register: _pg_stop
+  failed_when: false
+  changed_when: "'Successfully stopped' in (_pg_stop.stdout | default(''))"
+  become: false
+  when: postgresql_state == "absent"
