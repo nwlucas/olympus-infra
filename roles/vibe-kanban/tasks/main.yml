@@ -131,6 +131,7 @@
     dest: "{{ vibe_kanban_compose_dir }}/worker-init.sh"
     owner: "{{ ansible_user }}"
     mode: "0755"
+  become: true
   when: vibe_kanban_state == "present"
 
 - name: Vibe Kanban — write .env
