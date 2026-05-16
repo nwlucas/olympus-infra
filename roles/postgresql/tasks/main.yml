@@ -105,7 +105,10 @@
   ansible.builtin.command: >
     /opt/homebrew/bin/brew services stop postgresql@{{ postgresql_version }}
   register: _pg_stop
-  failed_when: false
+  failed_when:
+    - _pg_stop.rc != 0
+    - "'not started' not in (_pg_stop.stderr | default(''))"
+    - "'Could not find' not in (_pg_stop.stderr | default(''))"
   changed_when: "'Successfully stopped' in (_pg_stop.stdout | default(''))"
   become: false
   when: postgresql_state == "absent"

@@ -5,6 +5,3 @@ postgresql_port: 5432
 postgresql_data_dir: /opt/homebrew/var/postgresql@16
 postgresql_conf_dest: /opt/homebrew/var/postgresql@16/postgresql.conf
 postgresql_hba_dest: /opt/homebrew/var/postgresql@16/pg_hba.conf
-postgresql_databases: []
-postgresql_users: []
-postgresql_vibe_kanban_password: ""
