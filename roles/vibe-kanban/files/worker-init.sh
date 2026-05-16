@@ -10,12 +10,19 @@ cat > "$CONFIG_DIR/config.json" <<'EOF'
 {"config_version":"v8","relay_enabled":true,"host_nickname":"ai-hub"}
 EOF
 
-# Clone repos if not already present (Docker volume persists across restarts)
+# Clone repos if not already present (Docker volume persists across restarts).
+# Clone failures are non-fatal — bad tokens shouldn't crash the worker container;
+# users can re-run clones manually after fixing tokens via `docker exec`.
 clone_if_missing() {
   local url=$1
   local dest=$2
   if [ ! -d "$dest/.git" ]; then
-    git clone "$url" "$dest"
+    if git clone "$url" "$dest" 2>&1; then
+      echo "Cloned $dest"
+    else
+      echo "WARN: failed to clone $dest — continuing without it"
+      rm -rf "$dest" 2>/dev/null || true
+    fi
   else
     echo "Skipping $dest — already cloned"
   fi
