@@ -17,10 +17,10 @@
     --disk {{ colima_disk }}
     --foreground=false
   register: _colima_init
-  changed_when: _colima_init.rc == 0
+  changed_when: "'already running' not in (_colima_init.stderr | default('')) and _colima_init.rc == 0"
   failed_when:
     - _colima_init.rc != 0
-    - "'already running' not in _colima_init.stderr"
+    - "'already running' not in (_colima_init.stderr | default(''))"
   become: false
   when: colima_state == "present"
 
@@ -31,7 +31,7 @@
   changed_when: "'Successfully started' in _colima_start.stdout"
   failed_when:
     - _colima_start.rc != 0
-    - "'already started' not in _colima_start.stderr"
+    - "'already started' not in (_colima_start.stderr | default(''))"
   become: false
   when: colima_state == "present"
 
