@@ -1,7 +1,10 @@
 model_list:
+  # ---------------------------------------------------------------------------
+  # Local models via Ollama (localhost — co-located on ai-hub)
+  # ---------------------------------------------------------------------------
   - model_name: local-fast
     litellm_params:
-      model: ollama/glm4-flash
+      model: ollama/glm-4.7-flash:latest
       api_base: http://127.0.0.1:{{ ollama_service_port | default(11434) }}
 
   - model_name: local-heavy
@@ -9,14 +12,60 @@ model_list:
       model: ollama/llama3.3:70b
       api_base: http://127.0.0.1:{{ ollama_service_port | default(11434) }}
 
+  # ---------------------------------------------------------------------------
+  # Haiku tier → glm-4.7-flash (fast local)
+  # ---------------------------------------------------------------------------
+  - model_name: haiku
+    litellm_params:
+      model: ollama/glm-4.7-flash:latest
+      api_base: http://127.0.0.1:{{ ollama_service_port | default(11434) }}
+
+  - model_name: claude-haiku-4-5-20251001
+    litellm_params:
+      model: ollama/glm-4.7-flash:latest
+      api_base: http://127.0.0.1:{{ ollama_service_port | default(11434) }}
+
+  # ---------------------------------------------------------------------------
+  # Sonnet tier → glm-4.7-flash
+  # llama3.3:70b (~42GB) + glm-4.7-flash (~19GB) exceed 64GB when both hot.
+  # Route both tiers to GLM to keep only one model loaded.
+  # ---------------------------------------------------------------------------
   - model_name: sonnet
     litellm_params:
-      model: anthropic/claude-sonnet-4-6
-      api_key: "{{ litellm_anthropic_api_key }}"
+      model: ollama/glm-4.7-flash:latest
+      api_base: http://127.0.0.1:{{ ollama_service_port | default(11434) }}
 
+  - model_name: claude-sonnet-4-6
+    litellm_params:
+      model: ollama/glm-4.7-flash:latest
+      api_base: http://127.0.0.1:{{ ollama_service_port | default(11434) }}
+
+  - model_name: claude-sonnet-4-5
+    litellm_params:
+      model: ollama/glm-4.7-flash:latest
+      api_base: http://127.0.0.1:{{ ollama_service_port | default(11434) }}
+
+  # ---------------------------------------------------------------------------
+  # Opus tier → Anthropic (pass-through, real API spend)
+  # ---------------------------------------------------------------------------
   - model_name: opus
     litellm_params:
       model: anthropic/claude-opus-4-6
+      api_key: "{{ litellm_anthropic_api_key }}"
+
+  - model_name: opus[1m]
+    litellm_params:
+      model: anthropic/claude-opus-4-6
+      api_key: "{{ litellm_anthropic_api_key }}"
+
+  - model_name: claude-opus-4-6
+    litellm_params:
+      model: anthropic/claude-opus-4-6
+      api_key: "{{ litellm_anthropic_api_key }}"
+
+  - model_name: claude-opus-4-5
+    litellm_params:
+      model: anthropic/claude-opus-4-5
       api_key: "{{ litellm_anthropic_api_key }}"
 
 litellm_settings:
