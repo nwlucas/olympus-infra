@@ -15,6 +15,9 @@ services:
 
   remote-server:
     image: ghcr.io/nwlucas/vibe-kanban:remote-v0.1.27
+    # Upstream image is amd64-only; ai-hub is Apple Silicon (arm64) running
+    # Colima. Force amd64 emulation for vibe-kanban services.
+    platform: linux/amd64
     restart: unless-stopped
     ports:
       - "8081:8081"
@@ -34,6 +37,7 @@ services:
 
   worker:
     image: ghcr.io/nwlucas/vibe-kanban:worker-0.1.36
+    platform: linux/amd64
     restart: unless-stopped
     entrypoint: ["/bin/sh", "/vk-init.sh"]
     command: ["vibe-kanban"]
@@ -54,6 +58,7 @@ services:
 
   relay:
     image: ghcr.io/nwlucas/vibe-kanban:relay-v0.1.7
+    platform: linux/amd64
     restart: unless-stopped
     ports:
       - "8082:8082"
