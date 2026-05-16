@@ -18,8 +18,17 @@
   failed_when: false
   when: litellm_state == "present"
 
-- name: Reinstall LiteLLM with [proxy] extras if proxy deps are missing
-  ansible.builtin.command: /opt/homebrew/bin/pipx install --force --python /opt/homebrew/opt/python@3.13/bin/python3.13 "litellm[proxy]"
+- name: Uninstall existing LiteLLM venv (proxy deps missing — rebuild with python@3.13)
+  ansible.builtin.command: /opt/homebrew/bin/pipx uninstall litellm
+  register: _litellm_uninstall
+  changed_when: _litellm_uninstall.rc == 0
+  failed_when: false
+  when:
+    - litellm_state == "present"
+    - _litellm_websockets_check.rc != 0
+
+- name: Reinstall LiteLLM with [proxy] extras on python@3.13
+  ansible.builtin.command: /opt/homebrew/bin/pipx install --python /opt/homebrew/opt/python@3.13/bin/python3.13 "litellm[proxy]"
   register: litellm_reinstall
   changed_when: "'installed package litellm' in (litellm_reinstall.stdout | default(''))"
   when:
