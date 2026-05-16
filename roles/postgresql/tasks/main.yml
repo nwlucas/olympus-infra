@@ -106,6 +106,30 @@
     - postgresql_state == "present"
     - (_pg_db_check.stdout | default('') | trim) != "1"
 
+- name: Check if remote database exists
+  # vibe-kanban remote-server migration 20251127000000 references a
+  # separate 'remote' database (used by application-level cross-DB logic)
+  ansible.builtin.command: >
+    /opt/homebrew/opt/postgresql@{{ postgresql_version }}/bin/psql
+    -h 127.0.0.1 -p {{ postgresql_port }} -d postgres
+    -tA -c "SELECT 1 FROM pg_database WHERE datname='remote'"
+  register: _pg_remote_check
+  changed_when: false
+  become: false
+  when: postgresql_state == "present"
+
+- name: Create remote database
+  ansible.builtin.command: >
+    /opt/homebrew/opt/postgresql@{{ postgresql_version }}/bin/psql
+    -h 127.0.0.1 -p {{ postgresql_port }} -d postgres
+    -c "CREATE DATABASE remote"
+  register: _pg_remote_create
+  changed_when: "'CREATE DATABASE' in (_pg_remote_create.stdout | default(''))"
+  become: false
+  when:
+    - postgresql_state == "present"
+    - (_pg_remote_check.stdout | default('') | trim) != "1"
+
 - name: Create or update vibe_kanban user (REPLICATION + CREATEROLE for Electric & migrations)
   # REPLICATION attribute: required by ElectricSQL (uses logical replication)
   # CREATEROLE attribute: required by vibe-kanban remote-server migrations that
@@ -134,36 +158,45 @@
   become: false
   when: postgresql_state == "present"
 
-- name: Make vibe_kanban user the owner of vibe_kanban database
+- name: Make vibe_kanban user the owner of vibe_kanban and remote databases
   # Ownership grants full schema rights (PostgreSQL 15+ locks down 'public' by default)
   ansible.builtin.command: >
     /opt/homebrew/opt/postgresql@{{ postgresql_version }}/bin/psql
     -h 127.0.0.1 -p {{ postgresql_port }} -d postgres
-    -c "ALTER DATABASE vibe_kanban OWNER TO vibe_kanban"
+    -c "ALTER DATABASE {{ item }} OWNER TO vibe_kanban"
   register: _pg_owner
   changed_when: "'ALTER DATABASE' in (_pg_owner.stdout | default(''))"
   become: false
+  loop:
+    - vibe_kanban
+    - remote
   when: postgresql_state == "present"
 
-- name: Grant all on schema public to vibe_kanban user
-  # Needed for remote-server's diesel migrations (PG15+ public schema lockdown)
+- name: Grant all on schema public to vibe_kanban user (both DBs)
+  # Needed for remote-server's sqlx migrations (PG15+ public schema lockdown)
   ansible.builtin.command: >
     /opt/homebrew/opt/postgresql@{{ postgresql_version }}/bin/psql
-    -h 127.0.0.1 -p {{ postgresql_port }} -d vibe_kanban
+    -h 127.0.0.1 -p {{ postgresql_port }} -d {{ item }}
     -c "GRANT ALL ON SCHEMA public TO vibe_kanban"
   register: _pg_schema_grant
   changed_when: "'GRANT' in (_pg_schema_grant.stdout | default(''))"
   become: false
+  loop:
+    - vibe_kanban
+    - remote
   when: postgresql_state == "present"
 
-- name: Grant all privileges on vibe_kanban database to vibe_kanban user
+- name: Grant all privileges on databases to vibe_kanban user
   ansible.builtin.command: >
     /opt/homebrew/opt/postgresql@{{ postgresql_version }}/bin/psql
     -h 127.0.0.1 -p {{ postgresql_port }} -d postgres
-    -c "GRANT ALL PRIVILEGES ON DATABASE vibe_kanban TO vibe_kanban"
+    -c "GRANT ALL PRIVILEGES ON DATABASE {{ item }} TO vibe_kanban"
   register: _pg_grant
   changed_when: "'GRANT' in (_pg_grant.stdout | default(''))"
   become: false
+  loop:
+    - vibe_kanban
+    - remote
   when: postgresql_state == "present"
 
 - name: Stop and remove PostgreSQL
