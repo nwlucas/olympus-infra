@@ -57,16 +57,6 @@
   notify: Restart PostgreSQL
   when: postgresql_state == "present"
 
-- name: Install psycopg2-binary for community.postgresql modules
-  # community.postgresql modules require psycopg2 on the REMOTE host (ai-hub)
-  # --break-system-packages required on Python 3.12+ (PEP 668 enforcement)
-  ansible.builtin.pip:
-    name: psycopg2-binary
-    state: present
-    extra_args: "--break-system-packages"
-  become: false
-  when: postgresql_state == "present"
-
 - name: Fetch vibe-kanban DB password from 1Password Connect
   ansible.builtin.command: /opt/homebrew/bin/op read "op://Dev/vibe-kanban/db-password"
   register: _pg_vk_password
@@ -77,27 +67,66 @@
     OP_CONNECT_TOKEN: "{{ vault_onepassword_connect_token }}"
   when: postgresql_state == "present"
 
-- name: Create vibe_kanban database
-  community.postgresql.postgresql_db:
-    name: vibe_kanban
-    state: present
-    login_host: 127.0.0.1
-    login_port: "{{ postgresql_port }}"
-    # Homebrew creates a superuser matching the OS user, NOT "postgres"
-    login_user: "{{ ansible_user }}"
+# Use psql directly instead of community.postgresql modules — avoids the
+# psycopg2-binary dependency, which can't be installed on Apple's CLT Python
+# (no --break-system-packages support) and shouldn't pollute Homebrew Python.
+# Trust auth on 127.0.0.1 (set in pg_hba.conf) lets ansible_user connect
+# as the Homebrew-created superuser without a password.
+
+- name: Check if vibe_kanban database exists
+  ansible.builtin.command: >
+    /opt/homebrew/opt/postgresql@{{ postgresql_version }}/bin/psql
+    -h 127.0.0.1 -p {{ postgresql_port }} -d postgres
+    -tA -c "SELECT 1 FROM pg_database WHERE datname='vibe_kanban'"
+  register: _pg_db_check
+  changed_when: false
   become: false
   when: postgresql_state == "present"
 
-- name: Create vibe_kanban user
-  community.postgresql.postgresql_user:
-    name: vibe_kanban
-    password: "{{ _pg_vk_password.stdout | trim }}"
-    db: vibe_kanban
-    priv: ALL
-    login_host: 127.0.0.1
-    login_port: "{{ postgresql_port }}"
-    login_user: "{{ ansible_user }}"
+- name: Create vibe_kanban database
+  ansible.builtin.command: >
+    /opt/homebrew/opt/postgresql@{{ postgresql_version }}/bin/psql
+    -h 127.0.0.1 -p {{ postgresql_port }} -d postgres
+    -c "CREATE DATABASE vibe_kanban"
+  register: _pg_db_create
+  changed_when: "'CREATE DATABASE' in (_pg_db_create.stdout | default(''))"
+  become: false
+  when:
+    - postgresql_state == "present"
+    - (_pg_db_check.stdout | default('') | trim) != "1"
+
+- name: Create or update vibe_kanban user with password
+  ansible.builtin.command:
+    argv:
+      - /opt/homebrew/opt/postgresql@{{ postgresql_version }}/bin/psql
+      - -h
+      - "127.0.0.1"
+      - -p
+      - "{{ postgresql_port }}"
+      - -d
+      - postgres
+      - -c
+      - |
+        DO $$ BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vibe_kanban') THEN
+            CREATE USER vibe_kanban WITH PASSWORD '{{ _pg_vk_password.stdout | trim }}';
+          ELSE
+            ALTER USER vibe_kanban WITH PASSWORD '{{ _pg_vk_password.stdout | trim }}';
+          END IF;
+        END $$;
+  register: _pg_user_upsert
   no_log: true
+  changed_when: true
+  become: false
+  when: postgresql_state == "present"
+
+- name: Grant all privileges on vibe_kanban database to vibe_kanban user
+  ansible.builtin.command: >
+    /opt/homebrew/opt/postgresql@{{ postgresql_version }}/bin/psql
+    -h 127.0.0.1 -p {{ postgresql_port }} -d postgres
+    -c "GRANT ALL PRIVILEGES ON DATABASE vibe_kanban TO vibe_kanban"
+  register: _pg_grant
+  changed_when: "'GRANT' in (_pg_grant.stdout | default(''))"
   become: false
   when: postgresql_state == "present"
 
