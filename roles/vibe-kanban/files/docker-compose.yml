@@ -41,6 +41,12 @@ services:
     restart: unless-stopped
     entrypoint: ["/bin/sh", "/vk-init.sh"]
     command: ["vibe-kanban"]
+    # Publish the worker's local UI on the host so it's reachable over
+    # Tailscale at http://<ai-hub-tailscale-ip>:8083 — needed to generate
+    # the one-time pairing code from Settings -> Remote Access.
+    ports:
+      - "8083:8083"
+      - "8084:8084"
     volumes:
       - ./worker-init.sh:/vk-init.sh:ro
       - worker-home:/home/node
@@ -48,6 +54,11 @@ services:
       RUST_LOG: info
       VK_TUNNEL: "1"
       VK_ALLOWED_ORIGINS: https://${DOMAIN}
+      # Pin worker UI ports + bind address so we can reach it via Tailscale
+      # (defaults: random port + 127.0.0.1, not externally accessible).
+      HOST: "0.0.0.0"
+      BACKEND_PORT: "8083"
+      PREVIEW_PROXY_PORT: "8084"
       # Point worker at OUR self-hosted backend instead of the SaaS defaults
       # (api.vibekanban.com). Without these the worker registers with the
       # upstream SaaS and won't show up as a pairable host in our cloud UI.
