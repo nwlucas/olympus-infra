@@ -53,7 +53,9 @@ services:
     environment:
       RUST_LOG: info
       VK_TUNNEL: "1"
-      VK_ALLOWED_ORIGINS: https://${DOMAIN}
+      # Both the cloud UI (https://vibe.nwlnexus.xyz) and the worker's own UI
+      # (https://vk-host.nwlnexus.xyz) need to be in the CORS allow-list
+      VK_ALLOWED_ORIGINS: https://${DOMAIN},https://vk-host.nwlnexus.xyz
       # Pin worker UI ports + bind address so we can reach it via Tailscale
       # (defaults: random port + 127.0.0.1, not externally accessible).
       HOST: "0.0.0.0"
