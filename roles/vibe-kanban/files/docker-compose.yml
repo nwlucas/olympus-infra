@@ -48,6 +48,11 @@ services:
       RUST_LOG: info
       VK_TUNNEL: "1"
       VK_ALLOWED_ORIGINS: https://${DOMAIN}
+      # Point worker at OUR self-hosted backend instead of the SaaS defaults
+      # (api.vibekanban.com). Without these the worker registers with the
+      # upstream SaaS and won't show up as a pairable host in our cloud UI.
+      VK_SHARED_API_BASE: https://${DOMAIN}
+      VK_SHARED_RELAY_API_BASE: https://vk-relay.nwlnexus.net
       ANTHROPIC_BASE_URL: http://host.docker.internal:4000
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       GITHUB_OLYMPUS_TOKEN: ${GITHUB_OLYMPUS_TOKEN}
